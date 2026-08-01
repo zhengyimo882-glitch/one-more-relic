@@ -1,0 +1,35 @@
+:root {
+  font-family: Arial, "Microsoft YaHei", sans-serif;
+  color: #e8e0cf;
+  background: #0b0d0b;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  min-width: 320px;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #0b0d0b;
+}
+
+#game {
+  width: min(1280px, 100vw);
+  height: min(720px, 100vh);
+}
+
+#game canvas {
+  display: block;
+}
