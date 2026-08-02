@@ -9,6 +9,7 @@ import {
 import {
   ANTIQUE_SHOP_HEIGHT,
   ANTIQUE_SHOP_WIDTH,
+  antiqueShopDepthFromGround,
   createAntiqueShopInterior,
   type AntiqueShopInterior,
 } from './shared/createAntiqueShopInterior';
@@ -274,6 +275,7 @@ export class AntiqueShopScene extends Phaser.Scene {
       620,
       this.appearanceId,
     );
+    this.player.setDepth(antiqueShopDepthFromGround(this.player.y + 28));
     this.physics.add.collider(this.player, this.shopInterior.obstacles);
 
     this.createInterface();
@@ -345,6 +347,7 @@ export class AntiqueShopScene extends Phaser.Scene {
     }
 
     this.player.update();
+    this.player.setDepth(antiqueShopDepthFromGround(this.player.y + 28));
     this.turnShopkeeperTowardPlayer();
 
     if (this.phase === 'arriving') {

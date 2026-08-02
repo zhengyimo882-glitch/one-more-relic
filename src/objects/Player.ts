@@ -10,6 +10,7 @@ import {
 } from '../visuals/createPlayerAvatarVisual';
 
 export type PlayerDirection = 'up' | 'down' | 'left' | 'right';
+export type PlayerMovementMode = 'cartesian' | 'isometric';
 
 type MovementKeys = {
   up: Phaser.Input.Keyboard.Key;
@@ -23,6 +24,7 @@ const MOVE_SPEED = 180;
 export class Player extends Phaser.GameObjects.Container {
   private readonly movementKeys: MovementKeys;
   private readonly avatarVisual: PlayerAvatarVisual;
+  private readonly movementMode: PlayerMovementMode;
   private facing: PlayerDirection = 'up';
   private movementEnabled = true;
 
@@ -31,12 +33,14 @@ export class Player extends Phaser.GameObjects.Container {
     x: number,
     y: number,
     appearanceId: PlayerAppearanceId = DEFAULT_PLAYER_APPEARANCE_ID,
+    movementMode: PlayerMovementMode = 'cartesian',
   ) {
     super(scene, x, y);
 
     scene.add.existing(this);
     this.setSize(48, 48);
     this.setDepth(3);
+    this.movementMode = movementMode;
 
     this.avatarVisual = createPlayerAvatarVisual(
       scene,
@@ -77,7 +81,9 @@ export class Player extends Phaser.GameObjects.Container {
 
     const horizontal = Number(this.movementKeys.right.isDown) - Number(this.movementKeys.left.isDown);
     const vertical = Number(this.movementKeys.down.isDown) - Number(this.movementKeys.up.isDown);
-    const velocity = new Phaser.Math.Vector2(horizontal, vertical);
+    const velocity = this.movementMode === 'isometric'
+      ? new Phaser.Math.Vector2(horizontal - vertical, (horizontal + vertical) * 0.5)
+      : new Phaser.Math.Vector2(horizontal, vertical);
     const physicsBody = this.body as Phaser.Physics.Arcade.Body;
 
     if (velocity.lengthSq() === 0) {

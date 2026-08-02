@@ -27,25 +27,69 @@ import { VISUAL_THEME } from '../visuals/visualTheme';
 
 const WORLD_WIDTH = 1600;
 const WORLD_HEIGHT = 960;
-const GRID_SIZE = 64;
-const ROOM_X = 256;
-const ROOM_Y = 288;
-const ROOM_WIDTH = 1088;
-const ROOM_HEIGHT = 576;
+const GRID_SIZE = 32;
+const PIXEL_SCALE = 2;
 const WALL_THICKNESS = GRID_SIZE;
 const ENTRANCE_WIDTH = GRID_SIZE * 3;
-const ROOM_CENTER_X = ROOM_X + ROOM_WIDTH / 2;
-const PROP_Y = ROOM_Y + GRID_SIZE * 4;
-const LEFT_PROP_X = ROOM_CENTER_X - GRID_SIZE * 3.5;
-const RIGHT_PROP_X = ROOM_CENTER_X + GRID_SIZE * 3.5;
-const COMPASS_X = ROOM_CENTER_X;
-const COMPASS_Y = PROP_Y - GRID_SIZE;
+const ROOM_CENTER_X = WORLD_WIDTH / 2;
+const COFFIN_X = ROOM_CENTER_X;
+const COFFIN_Y = 145;
+const PROP_Y = 514;
+const LEFT_PROP_X = 360;
+const RIGHT_PROP_X = 1240;
+const COMPASS_X = COFFIN_X;
+const COMPASS_Y = COFFIN_Y;
 const ENTRANCE_X = ROOM_CENTER_X;
-const ENTRANCE_Y = ROOM_Y + ROOM_HEIGHT - WALL_THICKNESS / 2;
+const ENTRANCE_Y = 944;
 const EXIT_INTERACTION_RADIUS = 118;
 const DISTANCE_TIE_EPSILON = 0.5;
 const SERIF_FONT = VISUAL_THEME.fonts.serif;
 const SANS_FONT = VISUAL_THEME.fonts.sans;
+const TOMB_ASSET_ROOT = 'assets/imported/tomb_asset_pack';
+const SCENERY_DEPTH_BASE = 2;
+const PLAYER_DEPTH_BASE = 2;
+const CANDLE_FRAME_RATE = 7;
+const TORCH_FRAME_RATE = 9;
+const SPIKE_FRAME_RATE = 6;
+
+type TombRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type TombTextureFrame = TombRect & {
+  name: string;
+};
+
+const MAIN_TEXTURE_FRAMES: TombTextureFrame[] = [
+  { name: 'floor-a', x: 736, y: 208, width: 16, height: 16 },
+  { name: 'floor-b', x: 752, y: 208, width: 16, height: 16 },
+  { name: 'floor-cracked', x: 784, y: 208, width: 16, height: 16 },
+  { name: 'wall-brick-a', x: 288, y: 272, width: 16, height: 16 },
+  { name: 'wall-brick-b', x: 304, y: 272, width: 16, height: 16 },
+  { name: 'gate-bars', x: 496, y: 48, width: 128, height: 64 },
+];
+
+const DECORATIVE_TEXTURE_FRAMES: TombTextureFrame[] = [
+  { name: 'coffin-closed', x: 0, y: 64, width: 48, height: 32 },
+  { name: 'coffin-open', x: 0, y: 128, width: 48, height: 32 },
+  { name: 'coffin-plain', x: 0, y: 96, width: 48, height: 32 },
+  { name: 'pillar-a', x: 0, y: 16, width: 16, height: 48 },
+  { name: 'pillar-b', x: 16, y: 16, width: 16, height: 48 },
+  { name: 'ritual-idol', x: 32, y: 16, width: 16, height: 16 },
+  { name: 'stone-slab', x: 80, y: 64, width: 24, height: 32 },
+  { name: 'burial-rack', x: 128, y: 64, width: 32, height: 48 },
+  { name: 'urn-purple', x: 144, y: 128, width: 16, height: 16 },
+  { name: 'urn-green', x: 144, y: 176, width: 16, height: 16 },
+];
+
+const BURIAL_CHAMBER: TombRect = { x: 610, y: 20, width: 380, height: 300 };
+const CENTRAL_CHAMBER: TombRect = { x: 520, y: 350, width: 560, height: 280 };
+const WEST_CHAMBER: TombRect = { x: 190, y: 410, width: 330, height: 210 };
+const EAST_CHAMBER: TombRect = { x: 1080, y: 410, width: 330, height: 210 };
+const SOUTH_CHAMBER: TombRect = { x: 640, y: 620, width: 320, height: 180 };
 
 interface TombSceneData {
   appearanceId?: PlayerAppearanceId;
@@ -189,13 +233,13 @@ export class TombScene extends Phaser.Scene {
   private levelThreeShakeElapsed = 0;
   private compassFeedbackSeconds = 0;
   private artifactCollisions = new Map<string, Phaser.GameObjects.Rectangle>();
-  private entranceGateVisual?: Phaser.GameObjects.Graphics;
+  private entranceGateVisual?: Phaser.GameObjects.Image;
   private entranceGateCollision?: Phaser.GameObjects.Rectangle;
   private entranceSealTimer?: Phaser.Time.TimerEvent;
   private entranceGateTween?: Phaser.Tweens.Tween;
   private exitPrompt?: Phaser.GameObjects.Container;
-  private coffinClosedLid?: Phaser.GameObjects.Graphics;
-  private coffinOpenedLid?: Phaser.GameObjects.Graphics;
+  private coffinClosedLid?: Phaser.GameObjects.Image;
+  private coffinOpenedLid?: Phaser.GameObjects.Image;
   private ambientOverlay?: Phaser.GameObjects.Graphics;
   private interactionKey?: Phaser.Input.Keyboard.Key;
   private carryActionKey?: Phaser.Input.Keyboard.Key;
@@ -242,9 +286,32 @@ export class TombScene extends Phaser.Scene {
   private arrivalChineseText?: Phaser.GameObjects.Text;
   private arrivalBag?: Phaser.GameObjects.Container;
   private atmosphere?: ProceduralAtmosphere;
+  private previousCanvasImageRendering = '';
 
   constructor() {
     super('TombScene');
+  }
+
+  preload(): void {
+    this.load.image('tomb-main-sheet', `${TOMB_ASSET_ROOT}/mainlevbuild.png`);
+    this.load.image('tomb-decorative-sheet', `${TOMB_ASSET_ROOT}/decorative.png`);
+
+    for (let frame = 1; frame <= 4; frame += 1) {
+      const paddedFrame = frame.toString().padStart(2, '0');
+      this.load.image(
+        `tomb-candle-a-${frame}`,
+        `${TOMB_ASSET_ROOT}/candleA_${paddedFrame}.png`,
+      );
+      this.load.image(
+        `tomb-candle-b-${frame}`,
+        `${TOMB_ASSET_ROOT}/candleB_${paddedFrame}.png`,
+      );
+      this.load.image(`tomb-torch-${frame}`, `${TOMB_ASSET_ROOT}/torch_${frame}.png`);
+    }
+
+    for (let frame = 0; frame <= 4; frame += 1) {
+      this.load.image(`tomb-spike-${frame}`, `${TOMB_ASSET_ROOT}/spike_${frame}.png`);
+    }
   }
 
   init(data?: TombSceneData): void {
@@ -253,7 +320,60 @@ export class TombScene extends Phaser.Scene {
       : DEFAULT_PLAYER_APPEARANCE_ID;
   }
 
+  private registerTombTextures(): void {
+    this.addTextureFrames('tomb-main-sheet', MAIN_TEXTURE_FRAMES);
+    this.addTextureFrames('tomb-decorative-sheet', DECORATIVE_TEXTURE_FRAMES);
+
+    const textureKeys = [
+      'tomb-main-sheet',
+      'tomb-decorative-sheet',
+      ...Array.from({ length: 4 }, (_, index) => `tomb-candle-a-${index + 1}`),
+      ...Array.from({ length: 4 }, (_, index) => `tomb-candle-b-${index + 1}`),
+      ...Array.from({ length: 4 }, (_, index) => `tomb-torch-${index + 1}`),
+      ...Array.from({ length: 5 }, (_, index) => `tomb-spike-${index}`),
+    ];
+
+    for (const textureKey of textureKeys) {
+      this.textures.get(textureKey).setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+  }
+
+  private addTextureFrames(textureKey: string, frames: TombTextureFrame[]): void {
+    const texture = this.textures.get(textureKey);
+    for (const frame of frames) {
+      if (!texture.has(frame.name)) {
+        texture.add(frame.name, 0, frame.x, frame.y, frame.width, frame.height);
+      }
+    }
+  }
+
+  private registerTombAnimations(): void {
+    const createLoop = (key: string, texturePrefix: string, firstFrame: number, lastFrame: number, frameRate: number): void => {
+      if (this.anims.exists(key)) {
+        return;
+      }
+
+      this.anims.create({
+        key,
+        frames: Array.from({ length: lastFrame - firstFrame + 1 }, (_, index) => ({
+          key: `${texturePrefix}-${firstFrame + index}`,
+        })),
+        frameRate,
+        repeat: -1,
+      });
+    };
+
+    createLoop('tomb-candle-a-loop', 'tomb-candle-a', 1, 4, CANDLE_FRAME_RATE);
+    createLoop('tomb-candle-b-loop', 'tomb-candle-b', 1, 4, CANDLE_FRAME_RATE);
+    createLoop('tomb-torch-loop', 'tomb-torch', 1, 4, TORCH_FRAME_RATE);
+    createLoop('tomb-spike-loop', 'tomb-spike', 0, 4, SPIKE_FRAME_RATE);
+  }
+
   create(): void {
+    this.registerTombTextures();
+    this.registerTombAnimations();
+    this.previousCanvasImageRendering = this.game.canvas.style.imageRendering;
+    this.game.canvas.style.imageRendering = 'pixelated';
     this.resetTombState();
     this.investigableObjects = [];
     this.artifactSpots = [];
@@ -357,6 +477,7 @@ export class TombScene extends Phaser.Scene {
     }
 
     this.player.update();
+    this.player.setDepth(PLAYER_DEPTH_BASE + this.player.y / 1000);
     this.updateNearestInteraction();
 
     if (escapePressed) {
@@ -412,41 +533,16 @@ export class TombScene extends Phaser.Scene {
     return new Player(
       this,
       ROOM_CENTER_X,
-      ROOM_Y + ROOM_HEIGHT - WALL_THICKNESS - GRID_SIZE,
+      872,
       this.appearanceId,
     );
   }
 
   private createEntranceGate(obstacles: Phaser.Physics.Arcade.StaticGroup): void {
-    this.entranceGateVisual = this.add.graphics().setDepth(2.5);
-    this.entranceGateVisual.fillStyle(0x464b43, 1);
-    this.entranceGateVisual.fillRect(
-      -ENTRANCE_WIDTH / 2,
-      -WALL_THICKNESS / 2,
-      ENTRANCE_WIDTH,
-      WALL_THICKNESS,
-    );
-    this.entranceGateVisual.lineStyle(2, 0x9da18e, 0.92);
-    this.entranceGateVisual.strokeRect(
-      -ENTRANCE_WIDTH / 2,
-      -WALL_THICKNESS / 2,
-      ENTRANCE_WIDTH,
-      WALL_THICKNESS,
-    );
-    this.entranceGateVisual.lineBetween(
-      -ENTRANCE_WIDTH / 6,
-      -WALL_THICKNESS / 2,
-      -ENTRANCE_WIDTH / 6,
-      WALL_THICKNESS / 2,
-    );
-    this.entranceGateVisual.lineBetween(
-      ENTRANCE_WIDTH / 6,
-      -WALL_THICKNESS / 2,
-      ENTRANCE_WIDTH / 6,
-      WALL_THICKNESS / 2,
-    );
-    this.entranceGateVisual
-      .setPosition(ENTRANCE_X, ENTRANCE_Y + WALL_THICKNESS)
+    this.entranceGateVisual = this.add
+      .image(ENTRANCE_X, ENTRANCE_Y + WALL_THICKNESS, 'tomb-main-sheet', 'gate-bars')
+      .setOrigin(0.5, 0.5)
+      .setDepth(3.15)
       .setVisible(true);
 
     this.entranceGateCollision = this.add.rectangle(
@@ -659,6 +755,7 @@ export class TombScene extends Phaser.Scene {
     this.entranceGateTween?.stop();
     this.shopkeeperFadeTween?.stop();
     this.cameras.main?.resetFX();
+    this.game.canvas.style.imageRendering = this.previousCanvasImageRendering;
   }
 
   private configureCamera(): void {
@@ -666,7 +763,8 @@ export class TombScene extends Phaser.Scene {
       return;
     }
 
-    this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+    this.cameras.main.setBounds(160, 0, 1280, WORLD_HEIGHT);
+    this.cameras.main.setRoundPixels(true);
     this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
   }
 
@@ -1206,147 +1304,349 @@ export class TombScene extends Phaser.Scene {
 
   private drawTombGreybox(): void {
     this.createFloor();
+    this.createTiledFloor();
     this.createFloorDetails();
     this.createWalls();
+    this.createTiledWalls();
+    this.createChamberProps();
   }
 
   private createFloor(): void {
-    const interiorX = ROOM_X + WALL_THICKNESS;
-    const interiorY = ROOM_Y + WALL_THICKNESS;
-    const interiorWidth = ROOM_WIDTH - WALL_THICKNESS * 2;
-    const interiorHeight = ROOM_HEIGHT - WALL_THICKNESS * 2;
-    const entranceX = ROOM_CENTER_X - ENTRANCE_WIDTH / 2;
-
     const floor = this.add.graphics().setDepth(0);
     floor.fillStyle(0x50564d, 1);
-    floor.fillRect(interiorX, interiorY, interiorWidth, interiorHeight);
-    floor.fillRect(entranceX, ROOM_Y + ROOM_HEIGHT - WALL_THICKNESS, ENTRANCE_WIDTH, GRID_SIZE * 2);
+
+    for (const room of [
+      BURIAL_CHAMBER,
+      CENTRAL_CHAMBER,
+      WEST_CHAMBER,
+      EAST_CHAMBER,
+      SOUTH_CHAMBER,
+    ]) {
+      floor.fillRect(
+        room.x + WALL_THICKNESS,
+        room.y + WALL_THICKNESS,
+        room.width - WALL_THICKNESS * 2,
+        room.height - WALL_THICKNESS * 2,
+      );
+    }
+
+    // Doorways and passages join the five chambers into the cross-shaped tutorial route.
+    floor.fillRect(744, 288, 112, 94);
+    floor.fillRect(488, 464, 64, 80);
+    floor.fillRect(1048, 464, 64, 80);
+    floor.fillRect(744, 598, 112, 202);
+    floor.fillRect(752, 768, 96, 176);
+  }
+
+  private createTiledFloor(): void {
+    const floorAreas: TombRect[] = [
+      ...[
+        BURIAL_CHAMBER,
+        CENTRAL_CHAMBER,
+        WEST_CHAMBER,
+        EAST_CHAMBER,
+        SOUTH_CHAMBER,
+      ].map((room) => ({
+        x: room.x + WALL_THICKNESS,
+        y: room.y + WALL_THICKNESS,
+        width: room.width - WALL_THICKNESS * 2,
+        height: room.height - WALL_THICKNESS * 2,
+      })),
+      { x: 744, y: 288, width: 112, height: 94 },
+      { x: 488, y: 464, width: 64, height: 80 },
+      { x: 1048, y: 464, width: 64, height: 80 },
+      { x: 744, y: 598, width: 112, height: 202 },
+      { x: 752, y: 768, width: 96, height: 176 },
+    ];
+
+    floorAreas.forEach((area, index) => {
+      this.add
+        .tileSprite(
+          area.x,
+          area.y,
+          area.width,
+          area.height,
+          'tomb-main-sheet',
+          index % 3 === 0 ? 'floor-b' : 'floor-a',
+        )
+        .setOrigin(0)
+        .setTileScale(PIXEL_SCALE)
+        .setTilePosition((index % 2) * 16, ((index + 1) % 2) * 16)
+        .setDepth(0.2);
+    });
+
+    for (const [x, y] of [[666, 232], [934, 272], [574, 548], [1026, 408], [688, 730]]) {
+      this.add
+        .image(x, y, 'tomb-main-sheet', 'floor-cracked')
+        .setScale(PIXEL_SCALE)
+        .setDepth(0.28);
+    }
   }
 
   private createFloorDetails(): void {
-    const interiorX = ROOM_X + WALL_THICKNESS;
-    const interiorY = ROOM_Y + WALL_THICKNESS;
-    const interiorRight = ROOM_X + ROOM_WIDTH - WALL_THICKNESS;
-    const interiorBottom = ROOM_Y + ROOM_HEIGHT - WALL_THICKNESS;
-    const entranceX = ROOM_CENTER_X - ENTRANCE_WIDTH / 2;
     const details = this.add.graphics().setDepth(0.5);
 
     details.lineStyle(1, 0x92988a, 0.22);
-    for (let x = interiorX; x <= interiorRight; x += GRID_SIZE) {
-      details.lineBetween(x, interiorY, x, interiorBottom);
+    for (const room of [
+      BURIAL_CHAMBER,
+      CENTRAL_CHAMBER,
+      WEST_CHAMBER,
+      EAST_CHAMBER,
+      SOUTH_CHAMBER,
+    ]) {
+      const left = room.x + WALL_THICKNESS;
+      const top = room.y + WALL_THICKNESS;
+      const right = room.x + room.width - WALL_THICKNESS;
+      const bottom = room.y + room.height - WALL_THICKNESS;
+      for (let x = left; x <= right; x += GRID_SIZE) {
+        details.lineBetween(x, top, x, bottom);
+      }
+      for (let y = top; y <= bottom; y += GRID_SIZE) {
+        details.lineBetween(left, y, right, y);
+      }
     }
-    for (let y = interiorY; y <= interiorBottom; y += GRID_SIZE) {
-      details.lineBetween(interiorX, y, interiorRight, y);
+
+    for (let y = 304; y <= ENTRANCE_Y; y += GRID_SIZE) {
+      details.lineBetween(752, y, 848, y);
     }
-    for (let x = entranceX; x <= entranceX + ENTRANCE_WIDTH; x += GRID_SIZE) {
-      details.lineBetween(x, interiorBottom, x, interiorBottom + GRID_SIZE * 2);
-    }
-    details.lineBetween(
-      entranceX,
-      interiorBottom + GRID_SIZE,
-      entranceX + ENTRANCE_WIDTH,
-      interiorBottom + GRID_SIZE,
-    );
+    details.lineBetween(800, 288, 800, 382);
+    details.lineBetween(800, 598, 800, ENTRANCE_Y);
+    details.lineBetween(488, 504, 552, 504);
+    details.lineBetween(1048, 504, 1112, 504);
+
+    // Each chamber has its own floor language so its purpose reads at a glance.
+    details.lineStyle(2, 0x9a8666, 0.34);
+    details.strokeRoundedRect(706, 50, 188, 230, 6);
+    details.strokeRoundedRect(716, 60, 168, 210, 4);
+    details.strokeCircle(800, 492, 92);
+    details.strokeCircle(800, 492, 68);
+    details.lineBetween(732, 424, 868, 560);
+    details.lineBetween(868, 424, 732, 560);
+    details.strokeCircle(800, 704, 54);
+    details.strokeCircle(800, 704, 30);
 
     details.lineStyle(2, 0x262a25, 0.35);
-    details.lineBetween(448, 416, 466, 430);
-    details.lineBetween(466, 430, 454, 446);
-    details.lineBetween(1120, 672, 1102, 686);
-    details.lineBetween(1102, 686, 1114, 702);
-    details.lineBetween(672, 704, 688, 692);
+    details.lineBetween(274, 552, 296, 566);
+    details.lineBetween(296, 566, 286, 584);
+    details.lineBetween(1306, 456, 1288, 472);
+    details.lineBetween(1288, 472, 1302, 486);
+    details.lineBetween(690, 744, 708, 732);
 
     details.fillStyle(0x242820, 0.16);
-    details.fillEllipse(416, 640, 92, 46);
-    details.fillEllipse(1184, 416, 72, 38);
+    details.fillEllipse(286, 574, 82, 38);
+    details.fillEllipse(1314, 468, 66, 34);
     details.fillStyle(0x242820, 0.12);
-    details.fillRect(960, 704, GRID_SIZE, GRID_SIZE);
+    details.fillRect(936, 556, GRID_SIZE, GRID_SIZE);
 
     details.lineStyle(1, VISUAL_THEME.colors.corpseGreen, 0.18);
-    for (let index = 0; index < 16; index += 1) {
-      const x = interiorX + 34 + ((index * 173) % (interiorRight - interiorX - 68));
-      const y = interiorY + 28 + ((index * 97) % (interiorBottom - interiorY - 56));
+    for (let index = 0; index < 24; index += 1) {
+      const x = 224 + ((index * 173) % 1144);
+      const y = 62 + ((index * 97) % 830);
       details.lineBetween(x, y, x + 18 + (index % 3) * 8, y + (index % 2) * 3);
     }
 
     details.fillStyle(VISUAL_THEME.colors.tombBlue, 0.1);
-    details.fillEllipse(354, 372, 74, 30);
-    details.fillEllipse(1240, 508, 54, 96);
-    details.fillEllipse(594, 804, 92, 26);
+    details.fillEllipse(246, 470, 74, 30);
+    details.fillEllipse(1360, 522, 54, 90);
+    details.fillEllipse(686, 736, 82, 24);
+    details.fillEllipse(940, 246, 58, 32);
   }
 
   private createWalls(): void {
-    const entranceX = ROOM_CENTER_X - ENTRANCE_WIDTH / 2;
-    const southWallY = ROOM_Y + ROOM_HEIGHT - WALL_THICKNESS;
     const wall = this.add.graphics().setDepth(1);
+    const segments = this.getTombWallSegments();
 
     wall.fillStyle(0x323731, 1);
-    wall.fillRect(ROOM_X, ROOM_Y, ROOM_WIDTH, WALL_THICKNESS);
-    wall.fillRect(
-      ROOM_X,
-      ROOM_Y + WALL_THICKNESS,
-      WALL_THICKNESS,
-      ROOM_HEIGHT - WALL_THICKNESS * 2,
-    );
-    wall.fillRect(
-      ROOM_X + ROOM_WIDTH - WALL_THICKNESS,
-      ROOM_Y + WALL_THICKNESS,
-      WALL_THICKNESS,
-      ROOM_HEIGHT - WALL_THICKNESS * 2,
-    );
-    wall.fillRect(ROOM_X, southWallY, entranceX - ROOM_X, WALL_THICKNESS);
-    wall.fillRect(
-      entranceX + ENTRANCE_WIDTH,
-      southWallY,
-      ROOM_X + ROOM_WIDTH - entranceX - ENTRANCE_WIDTH,
-      WALL_THICKNESS,
-    );
-
-    wall.lineStyle(3, 0x8f9989, 0.92);
-    wall.lineBetween(
-      ROOM_X + WALL_THICKNESS,
-      ROOM_Y + WALL_THICKNESS,
-      ROOM_X + ROOM_WIDTH - WALL_THICKNESS,
-      ROOM_Y + WALL_THICKNESS,
-    );
-    wall.lineBetween(
-      ROOM_X + WALL_THICKNESS,
-      ROOM_Y + WALL_THICKNESS,
-      ROOM_X + WALL_THICKNESS,
-      southWallY,
-    );
-    wall.lineBetween(
-      ROOM_X + ROOM_WIDTH - WALL_THICKNESS,
-      ROOM_Y + WALL_THICKNESS,
-      ROOM_X + ROOM_WIDTH - WALL_THICKNESS,
-      southWallY,
-    );
-    wall.lineBetween(ROOM_X + WALL_THICKNESS, southWallY, entranceX, southWallY);
-    wall.lineBetween(
-      entranceX + ENTRANCE_WIDTH,
-      southWallY,
-      ROOM_X + ROOM_WIDTH - WALL_THICKNESS,
-      southWallY,
-    );
-
-    wall.lineStyle(1, VISUAL_THEME.colors.coldStone, 0.78);
-    for (let x = ROOM_X + 96; x < ROOM_X + ROOM_WIDTH - 64; x += 128) {
-      wall.lineBetween(x, ROOM_Y + 12, x + 48, ROOM_Y + 12);
-      wall.lineBetween(x + 42, ROOM_Y + 42, x + 104, ROOM_Y + 42);
+    for (const segment of segments) {
+      wall.fillRect(segment.x, segment.y, segment.width, segment.height);
     }
-    for (let y = ROOM_Y + 112; y < southWallY - 32; y += 96) {
-      wall.lineBetween(ROOM_X + 12, y, ROOM_X + 52, y + 12);
-      wall.lineBetween(
-        ROOM_X + ROOM_WIDTH - 52,
-        y + 18,
-        ROOM_X + ROOM_WIDTH - 12,
-        y + 6,
-      );
+
+    wall.lineStyle(2, 0x8f9989, 0.9);
+    for (const segment of segments) {
+      wall.strokeRect(segment.x + 1, segment.y + 1, segment.width - 2, segment.height - 2);
+    }
+
+    wall.lineStyle(1, VISUAL_THEME.colors.coldStone, 0.7);
+    for (const segment of segments) {
+      if (segment.width > segment.height) {
+        for (let x = segment.x + 24; x < segment.x + segment.width - 18; x += 72) {
+          wall.lineBetween(x, segment.y + 10, Math.min(x + 34, segment.x + segment.width - 8), segment.y + 10);
+          wall.lineBetween(x + 18, segment.y + 23, Math.min(x + 52, segment.x + segment.width - 8), segment.y + 23);
+        }
+      } else {
+        for (let y = segment.y + 24; y < segment.y + segment.height - 18; y += 64) {
+          wall.lineBetween(segment.x + 9, y, segment.x + 23, Math.min(y + 22, segment.y + segment.height - 8));
+        }
+      }
     }
 
     wall.fillStyle(VISUAL_THEME.colors.corpseGreen, 0.13);
-    wall.fillEllipse(420, ROOM_Y + 30, 156, 30);
-    wall.fillEllipse(ROOM_X + 30, 548, 28, 148);
-    wall.fillEllipse(ROOM_X + ROOM_WIDTH - 30, 642, 30, 122);
+    wall.fillEllipse(676, 36, 118, 22);
+    wall.fillEllipse(206, 526, 24, 112);
+    wall.fillEllipse(1394, 486, 24, 92);
+    wall.fillEllipse(924, 784, 66, 18);
+
+    wall.lineStyle(3, 0xb19a72, 0.48);
+    wall.lineBetween(744, 314, 856, 314);
+    wall.lineBetween(498, 464, 498, 544);
+    wall.lineBetween(1102, 464, 1102, 544);
+    wall.lineBetween(744, 624, 856, 624);
+    wall.lineBetween(752, 784, 848, 784);
+  }
+
+  private createTiledWalls(): void {
+    this.getTombWallSegments().forEach((segment, index) => {
+      this.add
+        .tileSprite(
+          segment.x,
+          segment.y,
+          segment.width,
+          segment.height,
+          'tomb-main-sheet',
+          index % 2 === 0 ? 'wall-brick-a' : 'wall-brick-b',
+        )
+        .setOrigin(0)
+        .setTileScale(PIXEL_SCALE)
+        .setTilePosition((index % 3) * 8, 0)
+        .setDepth(1.1);
+    });
+  }
+
+  private getTombWallSegments(): TombRect[] {
+    return [
+      { x: 610, y: 20, width: 380, height: 32 },
+      { x: 610, y: 20, width: 32, height: 300 },
+      { x: 958, y: 20, width: 32, height: 300 },
+      { x: 610, y: 288, width: 134, height: 32 },
+      { x: 856, y: 288, width: 134, height: 32 },
+      { x: 720, y: 288, width: 32, height: 94 },
+      { x: 848, y: 288, width: 32, height: 94 },
+      { x: 520, y: 350, width: 200, height: 32 },
+      { x: 880, y: 350, width: 200, height: 32 },
+      { x: 520, y: 350, width: 32, height: 114 },
+      { x: 520, y: 544, width: 32, height: 86 },
+      { x: 1048, y: 350, width: 32, height: 114 },
+      { x: 1048, y: 544, width: 32, height: 86 },
+      { x: 520, y: 598, width: 224, height: 32 },
+      { x: 856, y: 598, width: 224, height: 32 },
+      { x: 190, y: 410, width: 330, height: 32 },
+      { x: 190, y: 410, width: 32, height: 210 },
+      { x: 190, y: 588, width: 330, height: 32 },
+      { x: 488, y: 410, width: 32, height: 54 },
+      { x: 488, y: 544, width: 32, height: 76 },
+      { x: 1080, y: 410, width: 330, height: 32 },
+      { x: 1378, y: 410, width: 32, height: 210 },
+      { x: 1080, y: 588, width: 330, height: 32 },
+      { x: 1080, y: 410, width: 32, height: 54 },
+      { x: 1080, y: 544, width: 32, height: 76 },
+      { x: 640, y: 620, width: 104, height: 32 },
+      { x: 856, y: 620, width: 104, height: 32 },
+      { x: 640, y: 620, width: 32, height: 180 },
+      { x: 928, y: 620, width: 32, height: 180 },
+      { x: 640, y: 768, width: 112, height: 32 },
+      { x: 848, y: 768, width: 112, height: 32 },
+      { x: 720, y: 768, width: 32, height: 192 },
+      { x: 848, y: 768, width: 32, height: 192 },
+    ];
+  }
+
+  private createChamberProps(): void {
+    // Main coffin chamber: tall funerary columns and a restrained ring of grave goods.
+    this.createTombProp(680, 154, 'pillar-a');
+    this.createTombProp(920, 154, 'pillar-b');
+    this.createTombProp(680, 258, 'urn-green');
+    this.createTombProp(920, 258, 'urn-purple');
+    this.createTombProp(734, 98, 'stone-slab');
+    this.createTombProp(866, 98, 'stone-slab');
+
+    // Central antechamber: a low offering chest leaves two readable routes around it.
+    this.createTombProp(800, 514, 'coffin-plain');
+    this.createTombProp(744, 492, 'ritual-idol');
+    this.createTombProp(856, 492, 'ritual-idol');
+    this.createTombProp(600, 574, 'stone-slab');
+    this.createTombProp(1000, 574, 'stone-slab');
+
+    // West ear chamber: pottery store and burial rack around the low-value vessel.
+    this.createTombProp(258, 570, 'burial-rack');
+    this.createTombProp(310, 564, 'urn-purple');
+    this.createTombProp(414, 564, 'urn-purple');
+    this.createTombProp(452, 478, 'ritual-idol');
+
+    // East ear chamber: green-glazed offerings and columns frame the mirror display.
+    this.createTombProp(1152, 566, 'pillar-a');
+    this.createTombProp(1352, 566, 'pillar-b');
+    this.createTombProp(1128, 474, 'urn-green');
+    this.createTombProp(1310, 562, 'urn-green');
+    this.createTombProp(1298, 500, 'burial-rack');
+
+    // South chamber keeps the central aisle open; the chest sits against the east wall.
+    this.createTombProp(884, 736, 'coffin-plain');
+    this.createTombProp(704, 720, 'ritual-idol');
+
+    const animatedProps: Array<{
+      x: number;
+      y: number;
+      animation: string;
+      startFrame: number;
+      timeScale: number;
+    }> = [
+      { x: 690, y: 244, animation: 'tomb-candle-a-loop', startFrame: 0, timeScale: 0.92 },
+      { x: 910, y: 244, animation: 'tomb-candle-b-loop', startFrame: 2, timeScale: 1.08 },
+      { x: 610, y: 570, animation: 'tomb-candle-b-loop', startFrame: 1, timeScale: 0.97 },
+      { x: 990, y: 570, animation: 'tomb-candle-a-loop', startFrame: 3, timeScale: 1.04 },
+      { x: 762, y: 888, animation: 'tomb-torch-loop', startFrame: 0, timeScale: 0.9 },
+      { x: 838, y: 888, animation: 'tomb-torch-loop', startFrame: 2, timeScale: 1.05 },
+      { x: 560, y: 458, animation: 'tomb-torch-loop', startFrame: 1, timeScale: 0.96 },
+      { x: 1040, y: 458, animation: 'tomb-torch-loop', startFrame: 3, timeScale: 1.1 },
+    ];
+
+    for (const animatedProp of animatedProps) {
+      this.createAnimatedScenery(animatedProp);
+    }
+
+    this.createAnimatedScenery({
+      x: 800,
+      y: 584,
+      animation: 'tomb-spike-loop',
+      startFrame: 0,
+      timeScale: 1,
+      depth: 0.92,
+    });
+  }
+
+  private createTombProp(
+    x: number,
+    y: number,
+    frame: string,
+    scale = PIXEL_SCALE,
+  ): Phaser.GameObjects.Image {
+    return this.add
+      .image(x, y, 'tomb-decorative-sheet', frame)
+      .setOrigin(0.5, 1)
+      .setScale(scale)
+      .setDepth(this.getSceneryDepth(y));
+  }
+
+  private createAnimatedScenery(config: {
+    x: number;
+    y: number;
+    animation: string;
+    startFrame: number;
+    timeScale: number;
+    depth?: number;
+  }): Phaser.GameObjects.Sprite {
+    const sprite = this.add
+      .sprite(config.x, config.y, '__DEFAULT')
+      .setOrigin(0.5, 1)
+      .setScale(PIXEL_SCALE)
+      .setDepth(config.depth ?? this.getSceneryDepth(config.y));
+    sprite.play({ key: config.animation, startFrame: config.startFrame });
+    sprite.anims.timeScale = config.timeScale;
+    return sprite;
+  }
+
+  private getSceneryDepth(worldY: number): number {
+    return SCENERY_DEPTH_BASE + worldY / 1000;
   }
 
   private createArtifactSpots(): ArtifactSpot[] {
@@ -1412,7 +1712,7 @@ export class TombScene extends Phaser.Scene {
   }
 
   private createInvestigableObjects(): InvestigableObject[] {
-    const coffin = this.createCoffinVisual(ROOM_CENTER_X, PROP_Y);
+    const coffin = this.createCoffinVisual(COFFIN_X, COFFIN_Y);
     const leftObject = this.createBurialVesselVisual(LEFT_PROP_X, PROP_Y);
     const rightObject = this.createBronzeMirrorVisual(RIGHT_PROP_X, PROP_Y);
     const compassObject = this.createCompassVisual(COMPASS_X, COMPASS_Y);
@@ -1435,12 +1735,12 @@ export class TombScene extends Phaser.Scene {
         omenTier: 0,
         originalSpotId: null,
         hasBeenDisturbed: false,
-        worldX: ROOM_CENTER_X,
-        worldY: PROP_Y,
-        interactionRadius: 110,
+        worldX: COFFIN_X,
+        worldY: COFFIN_Y,
+        interactionRadius: 125,
         locationState: 'world',
         displaySpotId: null,
-        promptOffsetY: -142,
+        promptOffsetY: -70,
         visualObject: coffin.container,
         highlightObject: coffin.highlight,
       }),
@@ -1521,59 +1821,26 @@ export class TombScene extends Phaser.Scene {
     container: Phaser.GameObjects.Container;
     highlight: Phaser.GameObjects.Graphics;
   } {
-    const base = this.add.graphics();
-    base.fillStyle(0x725f4c, 1);
-    base.fillRect(-64, -96, 128, 192);
-    base.lineStyle(3, 0xb2916d, 1);
-    base.strokeRect(-64, -96, 128, 192);
-    base.fillStyle(0x312b25, 1);
-    base.fillRect(-49, -81, 98, 162);
-    base.lineStyle(2, 0xc1a078, 0.94);
-    base.strokeRect(-48, -80, 96, 160);
+    const shadow = this.add.graphics();
+    shadow.fillStyle(0x0b0d0b, 0.44);
+    shadow.fillEllipse(0, 20, 104, 34);
 
-    this.coffinClosedLid = this.add.graphics();
-    this.coffinClosedLid.fillStyle(0x634f40, 1);
-    this.coffinClosedLid.fillRect(-48, -80, 96, 160);
-    this.coffinClosedLid.lineStyle(2, 0xc1a078, 0.95);
-    this.coffinClosedLid.strokeRect(-48, -80, 96, 160);
-    this.coffinClosedLid.lineBetween(-48, -48, 48, -48);
-    this.coffinClosedLid.lineBetween(-48, 48, 48, 48);
-    this.coffinClosedLid.lineBetween(0, -80, 0, 80);
-    this.coffinClosedLid.strokePoints(
-      [
-        new Phaser.Geom.Point(0, -24),
-        new Phaser.Geom.Point(18, 0),
-        new Phaser.Geom.Point(0, 24),
-        new Phaser.Geom.Point(-18, 0),
-      ],
-      true,
-    );
-
-    this.coffinOpenedLid = this.add.graphics();
-    this.coffinOpenedLid.fillStyle(0x634f40, 1);
-    this.coffinOpenedLid.fillRect(-46, -76, 92, 152);
-    this.coffinOpenedLid.lineStyle(2, 0xc1a078, 0.92);
-    this.coffinOpenedLid.strokeRect(-46, -76, 92, 152);
-    this.coffinOpenedLid.lineBetween(-46, -40, 46, -40);
-    this.coffinOpenedLid.lineBetween(-46, 40, 46, 40);
-    this.coffinOpenedLid
-      .setPosition(88, -8)
-      .setAngle(4)
+    this.coffinClosedLid = this.add
+      .image(0, 0, 'tomb-decorative-sheet', 'coffin-closed')
+      .setScale(PIXEL_SCALE);
+    this.coffinOpenedLid = this.add
+      .image(0, 0, 'tomb-decorative-sheet', 'coffin-open')
+      .setScale(PIXEL_SCALE)
       .setVisible(false);
 
     const highlight = this.add.graphics();
-    highlight.lineStyle(3, 0xd5c49b, 0.84);
-    highlight.strokeRect(-68, -100, 136, 200);
+    highlight.lineStyle(2, 0xd5c49b, 0.84);
+    highlight.strokeRoundedRect(-52, -37, 104, 74, 4);
 
     return {
       container: this.add
-        .container(x, y, [
-          base,
-          this.coffinClosedLid,
-          this.coffinOpenedLid,
-          highlight,
-        ])
-        .setDepth(2),
+        .container(x, y, [shadow, this.coffinClosedLid, this.coffinOpenedLid, highlight])
+        .setDepth(this.getSceneryDepth(y)),
       highlight,
     };
   }
@@ -1585,26 +1852,22 @@ export class TombScene extends Phaser.Scene {
     container: Phaser.GameObjects.Container;
     highlight: Phaser.GameObjects.Graphics;
   } {
-    const base = this.add.graphics();
-    base.fillStyle(0x78856f, 1);
-    base.fillCircle(0, 0, 36);
-    base.lineStyle(2, 0xb9c3a4, 0.98);
-    base.strokeCircle(0, 0, 36);
-    base.fillStyle(0x596456, 1);
-    base.fillCircle(0, 0, 23);
-    base.lineStyle(2, 0xa4ab91, 0.7);
-    base.strokeCircle(0, 0, 23);
-    base.lineBetween(-25, 0, -10, 0);
-    base.lineBetween(10, 0, 25, 0);
-    base.lineBetween(0, -25, 0, -10);
-    base.lineBetween(0, 10, 0, 25);
+    const shadow = this.add.graphics();
+    shadow.fillStyle(0x0b0d0b, 0.38);
+    shadow.fillEllipse(0, 14, 42, 18);
+    const vessel = this.add
+      .image(0, 0, 'tomb-decorative-sheet', 'urn-purple')
+      .setScale(PIXEL_SCALE)
+      .setOrigin(0.5, 0.5);
 
     const highlight = this.add.graphics();
-    highlight.lineStyle(3, 0xc2b58f, 0.7);
-    highlight.strokeCircle(0, 0, 40);
+    highlight.lineStyle(2, 0xc2b58f, 0.76);
+    highlight.strokeCircle(0, 0, 22);
 
     return {
-      container: this.add.container(x, y, [base, highlight]).setDepth(2),
+      container: this.add
+        .container(x, y, [shadow, vessel, highlight])
+        .setDepth(this.getSceneryDepth(y)),
       highlight,
     };
   }
@@ -1636,7 +1899,9 @@ export class TombScene extends Phaser.Scene {
     highlight.strokeRoundedRect(-17, 22, 34, 28, 5);
 
     return {
-      container: this.add.container(x, y, [base, highlight]).setDepth(2),
+      container: this.add
+        .container(x, y, [base, highlight])
+        .setDepth(this.getSceneryDepth(y)),
       highlight,
     };
   }
@@ -1668,7 +1933,9 @@ export class TombScene extends Phaser.Scene {
     highlight.lineStyle(3, 0xc2b58f, 0.72);
     highlight.strokeCircle(0, 0, 31);
 
-    const container = this.add.container(x, y, [base, highlight]).setDepth(2);
+    const container = this.add
+      .container(x, y, [base, highlight])
+      .setDepth(this.getSceneryDepth(y));
     container.setVisible(false);
 
     return { container, highlight };
@@ -2161,11 +2428,11 @@ export class TombScene extends Phaser.Scene {
 
     const dust = this.add.graphics().setDepth(4);
     dust.fillStyle(0xaaa28c, 0.28);
-    dust.fillCircle(ROOM_CENTER_X - 42, PROP_Y - 78, 5);
-    dust.fillCircle(ROOM_CENTER_X - 16, PROP_Y - 104, 3);
-    dust.fillCircle(ROOM_CENTER_X + 18, PROP_Y - 92, 4);
-    dust.fillCircle(ROOM_CENTER_X + 46, PROP_Y - 64, 3);
-    dust.fillCircle(ROOM_CENTER_X + 4, PROP_Y - 50, 2);
+    dust.fillCircle(COFFIN_X - 38, COFFIN_Y - 18, 5);
+    dust.fillCircle(COFFIN_X - 14, COFFIN_Y - 30, 3);
+    dust.fillCircle(COFFIN_X + 16, COFFIN_Y - 24, 4);
+    dust.fillCircle(COFFIN_X + 40, COFFIN_Y - 10, 3);
+    dust.fillCircle(COFFIN_X + 4, COFFIN_Y - 4, 2);
 
     this.tweens.add({
       targets: dust,
@@ -2226,6 +2493,7 @@ export class TombScene extends Phaser.Scene {
     spot.artifactId = carriedArtifact.id;
     spot.isEmpty = false;
     carriedArtifact.moveToWorldSpot(spot.worldX, spot.worldY, spot.spotId);
+    carriedArtifact.visualObject.setDepth(this.getSceneryDepth(spot.worldY));
     this.setArtifactCollisionEnabled(carriedArtifact, true);
     this.carrySystem.takeArtifact(artifactAtSpot);
 
@@ -2247,6 +2515,7 @@ export class TombScene extends Phaser.Scene {
     spot.artifactId = carriedArtifact.id;
     spot.isEmpty = false;
     carriedArtifact.moveToWorldSpot(spot.worldX, spot.worldY, spot.spotId);
+    carriedArtifact.visualObject.setDepth(this.getSceneryDepth(spot.worldY));
     this.setArtifactCollisionEnabled(carriedArtifact, true);
     this.resetCarriedExposure(null);
     this.updateCarryUI();
@@ -2326,52 +2595,30 @@ export class TombScene extends Phaser.Scene {
 
   private createCollisionObstacles(): Phaser.Physics.Arcade.StaticGroup {
     const obstacles = this.physics.add.staticGroup();
-    const entranceX = ROOM_CENTER_X - ENTRANCE_WIDTH / 2;
-    const interiorWallHeight = ROOM_HEIGHT - WALL_THICKNESS * 2;
-    const southWallY = ROOM_Y + ROOM_HEIGHT - WALL_THICKNESS;
-    const leftSouthWallWidth = entranceX - ROOM_X;
-    const rightSouthWallWidth = ROOM_X + ROOM_WIDTH - entranceX - ENTRANCE_WIDTH;
+    for (const segment of this.getTombWallSegments()) {
+      this.addStaticObstacle(
+        obstacles,
+        segment.x + segment.width / 2,
+        segment.y + segment.height / 2,
+        segment.width,
+        segment.height,
+      );
+    }
 
-    this.addStaticObstacle(
-      obstacles,
-      ROOM_CENTER_X,
-      ROOM_Y + WALL_THICKNESS / 2,
-      ROOM_WIDTH,
-      WALL_THICKNESS,
-    );
-    this.addStaticObstacle(
-      obstacles,
-      ROOM_X + WALL_THICKNESS / 2,
-      ROOM_Y + WALL_THICKNESS + interiorWallHeight / 2,
-      WALL_THICKNESS,
-      interiorWallHeight,
-    );
-    this.addStaticObstacle(
-      obstacles,
-      ROOM_X + ROOM_WIDTH - WALL_THICKNESS / 2,
-      ROOM_Y + WALL_THICKNESS + interiorWallHeight / 2,
-      WALL_THICKNESS,
-      interiorWallHeight,
-    );
-    this.addStaticObstacle(
-      obstacles,
-      ROOM_X + leftSouthWallWidth / 2,
-      southWallY + WALL_THICKNESS / 2,
-      leftSouthWallWidth,
-      WALL_THICKNESS,
-    );
-    this.addStaticObstacle(
-      obstacles,
-      entranceX + ENTRANCE_WIDTH + rightSouthWallWidth / 2,
-      southWallY + WALL_THICKNESS / 2,
-      rightSouthWallWidth,
-      WALL_THICKNESS,
-    );
-
-    this.addStaticObstacle(obstacles, ROOM_CENTER_X, PROP_Y, 128, 192);
+    this.addStaticObstacle(obstacles, COFFIN_X, COFFIN_Y, 92, 48);
+    this.addStaticObstacle(obstacles, 680, 148, 24, 18);
+    this.addStaticObstacle(obstacles, 920, 148, 24, 18);
+    this.addStaticObstacle(obstacles, 800, 502, 84, 24);
+    this.addStaticObstacle(obstacles, 600, 566, 36, 16);
+    this.addStaticObstacle(obstacles, 1000, 566, 36, 16);
+    this.addStaticObstacle(obstacles, 258, 561, 54, 18);
+    this.addStaticObstacle(obstacles, 1152, 558, 24, 18);
+    this.addStaticObstacle(obstacles, 1352, 558, 24, 18);
+    this.addStaticObstacle(obstacles, 1298, 491, 54, 18);
+    this.addStaticObstacle(obstacles, 884, 724, 84, 24);
     this.artifactCollisions.set(
       'burial-vessel',
-      this.addStaticObstacle(obstacles, LEFT_PROP_X, PROP_Y, 76, 76),
+      this.addStaticObstacle(obstacles, LEFT_PROP_X, PROP_Y, 34, 34),
     );
     this.artifactCollisions.set(
       'bronze-mirror',
