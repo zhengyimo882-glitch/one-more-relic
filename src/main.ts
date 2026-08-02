@@ -7,6 +7,22 @@ import { CharacterSelectScene } from './scenes/CharacterSelectScene';
 import { ShopIntroductionScene } from './scenes/ShopIntroductionScene';
 import { TombScene } from './scenes/TombScene';
 import { AntiqueShopScene } from './scenes/AntiqueShopScene';
+import { Tomb25DPrototypeScene } from './scenes/Tomb25DPrototypeScene';
+
+const requestedScene = new URLSearchParams(window.location.search).get('scene');
+const launchTomb25DPrototype = requestedScene === 'tomb25d';
+const launchAntiqueShop25D = requestedScene === 'shop25d';
+const launchShopIntroduction = requestedScene === 'shopintro';
+
+const regularScenes = [
+  BootScene,
+  MainMenuScene,
+  StoryIntroScene,
+  CharacterSelectScene,
+  ShopIntroductionScene,
+  TombScene,
+  AntiqueShopScene,
+];
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -14,15 +30,21 @@ const config: Phaser.Types.Core.GameConfig = {
   width: 1280,
   height: 720,
   backgroundColor: '#111310',
-  scene: [
-    BootScene,
-    MainMenuScene,
-    StoryIntroScene,
-    CharacterSelectScene,
-    ShopIntroductionScene,
-    TombScene,
-    AntiqueShopScene,
-  ],
+  scene: launchTomb25DPrototype
+    ? [Tomb25DPrototypeScene, ...regularScenes]
+    : launchAntiqueShop25D
+      ? [
+          AntiqueShopScene,
+          ...regularScenes.filter((scene) => scene !== AntiqueShopScene),
+          Tomb25DPrototypeScene,
+        ]
+      : launchShopIntroduction
+        ? [
+            ShopIntroductionScene,
+            ...regularScenes.filter((scene) => scene !== ShopIntroductionScene),
+            Tomb25DPrototypeScene,
+          ]
+      : [...regularScenes, Tomb25DPrototypeScene],
   physics: {
     default: 'arcade',
     arcade: {
