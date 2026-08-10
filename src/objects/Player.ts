@@ -8,6 +8,7 @@ import {
   createPlayerAvatarVisual,
   type PlayerAvatarVisual,
 } from '../visuals/createPlayerAvatarVisual';
+import { TOMB_FEEL } from '../config/tombFeelConfig';
 
 export type PlayerDirection = 'up' | 'down' | 'left' | 'right';
 export type PlayerMovementMode = 'cartesian' | 'isometric';
@@ -19,14 +20,14 @@ type MovementKeys = {
   right: Phaser.Input.Keyboard.Key;
 };
 
-const MOVE_SPEED = 180;
-
 export class Player extends Phaser.GameObjects.Container {
   private readonly movementKeys: MovementKeys;
   private readonly avatarVisual: PlayerAvatarVisual;
   private readonly movementMode: PlayerMovementMode;
   private facing: PlayerDirection = 'up';
   private movementEnabled = true;
+  private readonly smoothedVelocity = new Phaser.Math.Vector2();
+  private lastUpdateTime = 0;
 
   constructor(
     scene: Phaser.Scene,
@@ -81,19 +82,40 @@ export class Player extends Phaser.GameObjects.Container {
 
     const horizontal = Number(this.movementKeys.right.isDown) - Number(this.movementKeys.left.isDown);
     const vertical = Number(this.movementKeys.down.isDown) - Number(this.movementKeys.up.isDown);
-    const velocity = this.movementMode === 'isometric'
+    const desiredVelocity = this.movementMode === 'isometric'
       ? new Phaser.Math.Vector2(horizontal - vertical, (horizontal + vertical) * 0.5)
       : new Phaser.Math.Vector2(horizontal, vertical);
     const physicsBody = this.body as Phaser.Physics.Arcade.Body;
+    const now = this.scene.time.now;
+    const deltaSeconds = this.lastUpdateTime === 0
+      ? 1 / 60
+      : Phaser.Math.Clamp((now - this.lastUpdateTime) / 1000, 0, 0.05);
+    this.lastUpdateTime = now;
 
-    if (velocity.lengthSq() === 0) {
-      physicsBody.setVelocity(0, 0);
+    if (desiredVelocity.lengthSq() === 0) {
+      const remainingSpeed = Math.max(
+        0,
+        this.smoothedVelocity.length() -
+          TOMB_FEEL.movement.deceleration * deltaSeconds,
+      );
+      if (remainingSpeed <= 0.5) {
+        this.smoothedVelocity.set(0, 0);
+      } else {
+        this.smoothedVelocity.setLength(remainingSpeed);
+      }
+      physicsBody.setVelocity(this.smoothedVelocity.x, this.smoothedVelocity.y);
       this.avatarVisual.setMovement(false, this.scene.time.now);
       return;
     }
 
-    velocity.normalize().scale(MOVE_SPEED);
-    physicsBody.setVelocity(velocity.x, velocity.y);
+    desiredVelocity.normalize().scale(TOMB_FEEL.movement.speed);
+    const deltaVelocity = desiredVelocity.clone().subtract(this.smoothedVelocity);
+    const maxVelocityChange = TOMB_FEEL.movement.acceleration * deltaSeconds;
+    if (deltaVelocity.length() > maxVelocityChange) {
+      deltaVelocity.setLength(maxVelocityChange);
+    }
+    this.smoothedVelocity.add(deltaVelocity);
+    physicsBody.setVelocity(this.smoothedVelocity.x, this.smoothedVelocity.y);
     this.avatarVisual.setMovement(true, this.scene.time.now);
 
     const nextFacing = this.getFacingFromInput(horizontal, vertical);
@@ -109,6 +131,59 @@ export class Player extends Phaser.GameObjects.Container {
     if (!enabled) {
       this.stop();
     }
+  }
+
+  getFacingVector(): Phaser.Math.Vector2 {
+    const vectors: Record<PlayerDirection, Phaser.Math.Vector2> = {
+      up: new Phaser.Math.Vector2(0, -1),
+      down: new Phaser.Math.Vector2(0, 1),
+      left: new Phaser.Math.Vector2(-1, 0),
+      right: new Phaser.Math.Vector2(1, 0),
+    };
+    return vectors[this.facing].clone();
+  }
+
+  getFacing(): PlayerDirection {
+    return this.facing;
+  }
+
+  getAnimationState(): string {
+    return this.avatarVisual.getAnimationState();
+  }
+
+  setAimAngle(angleRadians: number): void {
+    const horizontal = Math.cos(angleRadians);
+    const vertical = Math.sin(angleRadians);
+    const nextFacing: PlayerDirection = Math.abs(horizontal) > Math.abs(vertical)
+      ? horizontal >= 0 ? 'right' : 'left'
+      : vertical >= 0 ? 'down' : 'up';
+    if (nextFacing !== this.facing) {
+      this.facing = nextFacing;
+      this.avatarVisual.setFacing(nextFacing);
+    }
+  }
+
+  setCarrying(carrying: boolean): void {
+    this.avatarVisual.setCarrying(carrying);
+  }
+
+  playCarryAction(action: 'pickup' | 'place'): void {
+    this.avatarVisual.playAction(action);
+  }
+
+  getFlashlightMountWorld(angleRadians: number): Phaser.Math.Vector2 {
+    const forward = TOMB_FEEL.player.flashlightForwardOffset;
+    const lateral = TOMB_FEEL.player.flashlightMountOffsetX;
+    return new Phaser.Math.Vector2(
+      this.x + Math.cos(angleRadians) * forward - Math.sin(angleRadians) * lateral,
+      this.y + TOMB_FEEL.player.flashlightMountOffsetY +
+        Math.sin(angleRadians) * forward * 0.35 + Math.cos(angleRadians) * lateral,
+    );
+  }
+
+  getMovementVelocity(): Phaser.Math.Vector2 {
+    const body = this.body as Phaser.Physics.Arcade.Body | null;
+    return body ? body.velocity.clone() : new Phaser.Math.Vector2();
   }
 
   private getFacingFromInput(horizontal: number, vertical: number): PlayerDirection {
@@ -131,6 +206,8 @@ export class Player extends Phaser.GameObjects.Container {
   private stop(): void {
     const physicsBody = this.body as Phaser.Physics.Arcade.Body | null;
     physicsBody?.setVelocity(0, 0);
+    this.smoothedVelocity.set(0, 0);
+    this.lastUpdateTime = this.scene.time.now;
     this.avatarVisual.setMovement(false, this.scene.time.now);
   }
 }

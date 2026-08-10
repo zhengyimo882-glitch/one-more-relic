@@ -6,6 +6,7 @@ export interface ProceduralAtmosphereConfig {
   worldWidth: number;
   worldHeight: number;
   lightAnchors?: readonly Phaser.Math.Vector2[];
+  playerLightEnabled?: boolean;
 }
 
 export interface ProceduralAtmosphere {
@@ -69,10 +70,12 @@ export function createProceduralAtmosphere(
       if (config.style === 'tomb') {
         const flicker =
           1 + Math.sin(time / 173) * 0.018 + Math.sin(time / 71) * 0.008;
-        lightLayer
-          .setPosition(focusX, focusY)
-          .setScale(flicker, 1 / flicker)
-          .setAlpha(0.88 + Math.sin(time / 137) * 0.035);
+        if (config.playerLightEnabled !== false) {
+          lightLayer
+            .setPosition(focusX, focusY)
+            .setScale(flicker, 1 / flicker)
+            .setAlpha(0.88 + Math.sin(time / 137) * 0.035);
+        }
       } else {
         lightLayer.setPosition(
           horizontalRatio * 4,
@@ -152,6 +155,10 @@ function createLightLayer(
   const graphics = scene.add.graphics().setDepth(VISUAL_THEME.depth.floorLight);
   graphics.setBlendMode(Phaser.BlendModes.ADD);
   if (config.style === 'tomb') {
+    if (config.playerLightEnabled === false) {
+      graphics.setVisible(false);
+      return graphics;
+    }
     graphics.fillStyle(VISUAL_THEME.colors.lanternOrange, 0.095);
     graphics.fillEllipse(0, 10, 340, 280);
     graphics.fillStyle(VISUAL_THEME.colors.oldPaper, 0.045);

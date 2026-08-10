@@ -1,5 +1,9 @@
 import Phaser from 'phaser';
 import { VISUAL_THEME } from '../../visuals/visualTheme';
+import {
+  createShopkeeperVisual,
+  type ShopkeeperVisual,
+} from '../../visuals/createShopkeeperVisual';
 
 export const ANTIQUE_SHOP_WIDTH = 1280;
 export const ANTIQUE_SHOP_HEIGHT = 720;
@@ -7,6 +11,7 @@ export const ANTIQUE_SHOP_HEIGHT = 720;
 export interface AntiqueShopInterior {
   obstacles: Phaser.Physics.Arcade.StaticGroup;
   shopkeeper: Phaser.GameObjects.Container;
+  shopkeeperVisual: ShopkeeperVisual;
   interactionHighlight: Phaser.GameObjects.Graphics;
   counterX: number;
   counterY: number;
@@ -42,7 +47,10 @@ export function createAntiqueShopInterior(
   createCounter(scene, obstacles, counterX, counterGroundY);
   createBackDoor(scene);
   createHangingLanterns(scene);
-  const shopkeeper = createShopkeeper(scene, counterX);
+  const shopkeeperVisual = createShopkeeperVisual(scene, counterX, 250);
+  const shopkeeper = shopkeeperVisual.container.setDepth(
+    antiqueShopDepthFromGround(250),
+  );
   const interactionHighlight = createInteractionHighlight(scene);
 
   addObstacle(scene, obstacles, 640, 67, 1120, 54);
@@ -54,6 +62,7 @@ export function createAntiqueShopInterior(
   return {
     obstacles,
     shopkeeper,
+    shopkeeperVisual,
     interactionHighlight,
     counterX,
     counterY: counterGroundY,
@@ -416,25 +425,6 @@ function createInteractionHighlight(
   highlight.strokeRoundedRect(354, 214, 572, 112, 7);
   highlight.strokeEllipse(640, 207, 76, 96);
   return highlight;
-}
-
-function createShopkeeper(
-  scene: Phaser.Scene,
-  counterX: number,
-): Phaser.GameObjects.Container {
-  const shadow = scene.add.ellipse(0, 18, 58, 26, 0x070706, 0.42);
-  const robe = scene.add.graphics();
-  robe.fillStyle(0x363b32, 1);
-  robe.fillRoundedRect(-27, -20, 54, 72, 15);
-  robe.lineStyle(2, 0x7f8974, 0.9);
-  robe.strokeRoundedRect(-27, -20, 54, 72, 15);
-  robe.lineBetween(0, -12, 0, 48);
-  const head = scene.add.ellipse(0, -28, 30, 34, 0x8e826e, 0.92);
-  head.setStrokeStyle(2, 0x8f927f, 0.92);
-  const faceHint = scene.add.circle(6, -27, 2, 0xd2b783, 0.8);
-  return scene.add
-    .container(counterX, 210, [shadow, robe, head, faceHint])
-    .setDepth(antiqueShopDepthFromGround(250));
 }
 
 function addObstacle(

@@ -18,6 +18,16 @@ import {
   type ProceduralAtmosphere,
 } from '../visuals/createProceduralAtmosphere';
 import { VISUAL_THEME } from '../visuals/visualTheme';
+import { preloadPlayerAvatarAssets } from '../visuals/createPlayerAvatarVisual';
+import {
+  inferShopkeeperGesture,
+  preloadShopkeeperAssets,
+  type ShopkeeperGesture,
+} from '../visuals/createShopkeeperVisual';
+import {
+  createParchmentPanel,
+  preloadParchmentPanel,
+} from '../visuals/createParchmentPanel';
 
 const SERIF_FONT = VISUAL_THEME.fonts.serif;
 const SANS_FONT = VISUAL_THEME.fonts.sans;
@@ -56,6 +66,7 @@ type ConversationBeat = {
   chineseTitle: string;
   englishText: string;
   chineseText: string;
+  shopkeeperGesture?: ShopkeeperGesture;
 };
 
 type ArtifactShopData = {
@@ -236,6 +247,12 @@ export class AntiqueShopScene extends Phaser.Scene {
 
   constructor() {
     super('AntiqueShopScene');
+  }
+
+  preload(): void {
+    preloadPlayerAvatarAssets(this);
+    preloadShopkeeperAssets(this);
+    preloadParchmentPanel(this);
   }
 
   init(data?: Partial<AntiqueShopSceneData>): void {
@@ -511,15 +528,13 @@ export class AntiqueShopScene extends Phaser.Scene {
   }
 
   private createConversationPanel(): void {
-    const background = this.add
-      .rectangle(0, 0, 1100, 188, 0x15120f, 0.94)
-      .setStrokeStyle(1, 0xb19a72, 0.88);
+    const background = createParchmentPanel(this, 1100, 206);
     this.conversationEnglishTitle = this.add
       .text(-510, -76, '', {
         fontFamily: SANS_FONT,
         fontSize: '14px',
         fontStyle: 'bold',
-        color: '#b8a27b',
+        color: '#4f2415',
         letterSpacing: 1,
       })
       .setOrigin(0, 0.5);
@@ -527,14 +542,14 @@ export class AntiqueShopScene extends Phaser.Scene {
       .text(-510, -54, '', {
         fontFamily: SANS_FONT,
         fontSize: '13px',
-        color: '#aaa18f',
+        color: '#332016',
       })
       .setOrigin(0, 0.5);
     this.conversationEnglishText = this.add
       .text(-510, -27, '', {
         fontFamily: SERIF_FONT,
         fontSize: '18px',
-        color: '#ded4b9',
+        color: '#1e1109',
         wordWrap: { width: 1020 },
         lineSpacing: 4,
       })
@@ -543,18 +558,19 @@ export class AntiqueShopScene extends Phaser.Scene {
       .text(-510, 31, '', {
         fontFamily: SERIF_FONT,
         fontSize: '15px',
-        color: '#bbb3a1',
+        fontStyle: 'bold',
+        color: '#24140b',
         wordWrap: { width: 1020 },
         lineSpacing: 3,
       })
       .setOrigin(0, 0);
     this.conversationContinueHint = this.add
-      .text(510, 78, 'E  CONTINUE / 继续', {
+      .text(0, 78, 'E  CONTINUE / 继续', {
         fontFamily: SANS_FONT,
         fontSize: '14px',
-        color: '#b0a38b',
+        color: '#2f1d11',
       })
-      .setOrigin(1, 0.5);
+      .setOrigin(0.5);
     this.conversationPanel = this.add
       .container(
         this.scale.width / 2,
@@ -574,22 +590,20 @@ export class AntiqueShopScene extends Phaser.Scene {
   }
 
   private createChoicePanel(): void {
-    const background = this.add
-      .rectangle(0, 0, 1000, 200, 0x15120f, 0.97)
-      .setStrokeStyle(2, 0xb19a72, 0.88);
+    const background = createParchmentPanel(this, 1000, 216);
     this.choiceEnglishTitle = this.add
       .text(0, -73, '', {
         fontFamily: SERIF_FONT,
         fontSize: '27px',
         fontStyle: 'bold',
-        color: '#e5dbc2',
+        color: '#1e1109',
       })
       .setOrigin(0.5);
     this.choiceChineseTitle = this.add
       .text(0, -45, '', {
         fontFamily: SERIF_FONT,
         fontSize: '18px',
-        color: '#bbb3a1',
+        color: '#2e1b12',
       })
       .setOrigin(0.5);
     this.leftChoiceBox = this.add
@@ -631,10 +645,10 @@ export class AntiqueShopScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
     const hint = this.add
-      .text(0, 82, 'A / D  SELECT / 选择     E  CONFIRM / 确认', {
+      .text(0, 76, 'A / D  SELECT / 选择     E  CONFIRM / 确认', {
         fontFamily: SANS_FONT,
         fontSize: '15px',
-        color: '#b0a38b',
+        color: '#2f1d11',
       })
       .setOrigin(0.5);
     this.choicePanel = this.add
@@ -848,7 +862,7 @@ export class AntiqueShopScene extends Phaser.Scene {
       return;
     }
     const direction = this.player.x < this.shopkeeper.x ? -1 : 1;
-    this.shopkeeper.setScale(direction, 1);
+    this.shopInterior?.shopkeeperVisual.setFacing(direction as -1 | 1);
   }
 
   private beginShopkeeperConversation(): void {
@@ -918,6 +932,7 @@ export class AntiqueShopScene extends Phaser.Scene {
       chineseTitle: '古玩店老板',
       englishText,
       chineseText,
+      shopkeeperGesture: inferShopkeeperGesture(englishText),
     };
   }
 
@@ -933,6 +948,7 @@ export class AntiqueShopScene extends Phaser.Scene {
     }
 
     this.conversationPanel?.setVisible(false);
+    this.shopInterior?.shopkeeperVisual.playGesture('idle');
     if (this.conversationCompletion === 'response-choice') {
       this.openResponseChoice();
     } else if (this.conversationCompletion === 'sale-choice') {
@@ -952,15 +968,18 @@ export class AntiqueShopScene extends Phaser.Scene {
       return;
     }
     const isThought = beat.voice === 'thought';
+    this.shopInterior?.shopkeeperVisual.playGesture(
+      beat.voice === 'shopkeeper' ? beat.shopkeeperGesture ?? 'nod' : 'idle',
+    );
     this.conversationEnglishTitle.setText(beat.englishTitle);
     this.conversationChineseTitle.setText(beat.chineseTitle);
     this.conversationEnglishText
       .setText(beat.englishText)
-      .setColor(isThought ? '#aab2ae' : '#ded4b9')
+      .setColor(isThought ? '#354641' : '#1e1109')
       .setFontStyle(isThought ? 'italic' : 'normal');
     this.conversationChineseText
       .setText(beat.chineseText)
-      .setColor(isThought ? '#838f8b' : '#a79d88');
+      .setColor(isThought ? '#3b4d48' : '#24140b');
   }
 
   private openResponseChoice(): void {

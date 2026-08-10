@@ -17,6 +17,23 @@ import {
   type ProceduralAtmosphere,
 } from '../visuals/createProceduralAtmosphere';
 import { VISUAL_THEME } from '../visuals/visualTheme';
+import {
+  getPlayerAvatarTint,
+  PLAYER_PORTRAIT_FRAME,
+  PLAYER_TEXTURE_KEY,
+  preloadPlayerAvatarAssets,
+} from '../visuals/createPlayerAvatarVisual';
+import {
+  inferShopkeeperGesture,
+  preloadShopkeeperAssets,
+  SHOPKEEPER_TEXTURE_KEY,
+  shopkeeperFrameForGesture,
+  type ShopkeeperGesture,
+} from '../visuals/createShopkeeperVisual';
+import {
+  createParchmentPanel,
+  preloadParchmentPanel,
+} from '../visuals/createParchmentPanel';
 
 const SERIF_FONT = VISUAL_THEME.fonts.serif;
 const SANS_FONT = VISUAL_THEME.fonts.sans;
@@ -41,6 +58,7 @@ interface DialogueBeat {
   speakerZh: string;
   textEn: string;
   textZh: string;
+  shopkeeperGesture?: ShopkeeperGesture;
 }
 
 const OPENING_BEATS: DialogueBeat[] = [
@@ -210,6 +228,7 @@ function shopkeeper(textEn: string, textZh: string): DialogueBeat {
     speakerZh: '古玩店老板',
     textEn,
     textZh,
+    shopkeeperGesture: inferShopkeeperGesture(textEn),
   };
 }
 
@@ -249,6 +268,8 @@ export class ShopIntroductionScene extends Phaser.Scene {
   private dialogueProgress?: Phaser.GameObjects.Text;
   private dialogueAccent?: Phaser.GameObjects.Rectangle;
   private dialoguePortrait?: Phaser.GameObjects.Graphics;
+  private dialogueShopkeeperPortrait?: Phaser.GameObjects.Sprite;
+  private dialoguePlayerPortrait?: Phaser.GameObjects.Sprite;
   private dialogueFocusOverlay?: Phaser.GameObjects.Graphics;
   private dialogueSpeakerFocus?: Phaser.GameObjects.Graphics;
   private choicePanel?: Phaser.GameObjects.Container;
@@ -260,6 +281,12 @@ export class ShopIntroductionScene extends Phaser.Scene {
 
   constructor() {
     super('ShopIntroductionScene');
+  }
+
+  preload(): void {
+    preloadPlayerAvatarAssets(this);
+    preloadShopkeeperAssets(this);
+    preloadParchmentPanel(this);
   }
 
   init(data: ShopIntroductionSceneData): void {
@@ -469,62 +496,72 @@ export class ShopIntroductionScene extends Phaser.Scene {
   }
 
   private createDialoguePanel(): void {
-    const background = this.add
-      .rectangle(0, 0, 1120, 204, 0x15110e, 0.97)
-      .setStrokeStyle(2, 0xa98a5d, 0.86);
-    const innerBorder = this.add.rectangle(0, 0, 1094, 178, 0x000000, 0)
-      .setStrokeStyle(1, 0x7d694b, 0.48);
+    const background = createParchmentPanel(this, 1120, 220);
+    const innerBorder = this.add.rectangle(0, 0, 1094, 194, 0x000000, 0)
+      .setStrokeStyle(1, 0x5c3b22, 0.5);
     const portraitFrame = this.add.rectangle(-472, 0, 142, 154, 0x211b16, 0.96)
       .setStrokeStyle(1, 0x806b4d, 0.72);
-    this.dialogueAccent = this.add.rectangle(-557, 0, 6, 204, 0xb07b49, 1);
+    this.dialogueAccent = this.add.rectangle(-557, 0, 6, 220, 0x7b4226, 1);
     this.dialoguePortrait = this.add.graphics();
+    this.dialogueShopkeeperPortrait = this.add
+      .sprite(-472, 20, SHOPKEEPER_TEXTURE_KEY, 0)
+      .setOrigin(0.5, 0.78)
+      .setScale(0.5)
+      .setVisible(false);
+    this.dialoguePlayerPortrait = this.add
+      .sprite(-472, 10, PLAYER_TEXTURE_KEY, PLAYER_PORTRAIT_FRAME)
+      .setOrigin(0.5)
+      .setScale(0.62)
+      .setTint(getPlayerAvatarTint(this.appearanceId))
+      .setVisible(false);
     this.dialogueContext = this.add.text(-382, -84, 'FIRST COMMISSION / 第一次委托', {
       fontFamily: SANS_FONT,
       fontSize: '11px',
       fontStyle: 'bold',
-      color: '#8f8069',
+      color: '#3b2415',
       letterSpacing: 1,
     });
     this.dialogueSpeakerEn = this.add.text(-382, -63, '', {
       fontFamily: SANS_FONT,
       fontSize: '14px',
       fontStyle: 'bold',
-      color: '#cbb68c',
+      color: '#4f1f12',
       letterSpacing: 1,
     });
     this.dialogueSpeakerZh = this.add.text(-382, -42, '', {
       fontFamily: SANS_FONT,
       fontSize: '12px',
-      color: '#877e6c',
+      color: '#332016',
     });
     this.dialogueTextEn = this.add.text(-382, -13, '', {
       fontFamily: SERIF_FONT,
       fontSize: '19px',
-      color: '#e8deca',
+      color: '#1e1109',
       lineSpacing: 4,
       wordWrap: { width: 838 },
     });
     this.dialogueTextZh = this.add.text(-382, 47, '', {
       fontFamily: SERIF_FONT,
-      fontSize: '14px',
-      color: '#aaa08d',
+      fontSize: '15px',
+      fontStyle: 'bold',
+      color: '#24140b',
       lineSpacing: 3,
       wordWrap: { width: 838 },
     });
     this.dialogueProgress = this.add
-      .text(516, -84, '', {
+      .text(480, -84, '', {
         fontFamily: SANS_FONT,
         fontSize: '11px',
-        color: '#8e806b',
+        color: '#3a2516',
       })
       .setOrigin(1, 0);
     const continueText = this.add
-      .text(516, 85, 'E / ENTER  CONTINUE / 继续', {
+      .text(0, 84, 'E / ENTER  CONTINUE / 继续', {
         fontFamily: SANS_FONT,
         fontSize: '12px',
-        color: '#b7a17b',
+        color: '#2f1d11',
       })
-      .setOrigin(1, 0.5);
+      .setOrigin(0.5);
     this.dialoguePanel = this.add
       .container(this.scale.width / 2, 594, [
         background,
@@ -532,6 +569,8 @@ export class ShopIntroductionScene extends Phaser.Scene {
         portraitFrame,
         this.dialogueAccent,
         this.dialoguePortrait,
+        this.dialogueShopkeeperPortrait,
+        this.dialoguePlayerPortrait,
         this.dialogueContext,
         this.dialogueSpeakerEn,
         this.dialogueSpeakerZh,
@@ -546,16 +585,14 @@ export class ShopIntroductionScene extends Phaser.Scene {
   }
 
   private createChoicePanel(): void {
-    const background = this.add
-      .rectangle(0, 0, 1120, 218, 0x15110e, 0.98)
-      .setStrokeStyle(2, 0xa18a62, 0.82);
-    const innerBorder = this.add.rectangle(0, 0, 1094, 192, 0x000000, 0)
-      .setStrokeStyle(1, 0x7d694b, 0.48);
+    const background = createParchmentPanel(this, 1120, 228);
+    const innerBorder = this.add.rectangle(0, 0, 1094, 202, 0x000000, 0)
+      .setStrokeStyle(1, 0x5c3b22, 0.5);
     const context = this.add.text(-516, -91, 'YOUR RESPONSE / 你的回应', {
       fontFamily: SANS_FONT,
       fontSize: '11px',
       fontStyle: 'bold',
-      color: '#8f8069',
+      color: '#3b2415',
       letterSpacing: 1,
     });
     this.choiceTitleEn = this.add
@@ -563,21 +600,21 @@ export class ShopIntroductionScene extends Phaser.Scene {
         fontFamily: SERIF_FONT,
         fontSize: '23px',
         fontStyle: 'bold',
-        color: '#e5dac3',
+        color: '#1e1109',
       })
       .setOrigin(0.5);
     this.choiceTitleZh = this.add
       .text(0, -42, '', {
         fontFamily: SERIF_FONT,
         fontSize: '16px',
-        color: '#a69b87',
+        color: '#2e1b12',
       })
       .setOrigin(0.5);
     const controls = this.add
-      .text(0, 92, 'A / D  SELECT / 选择     E  CONFIRM / 确认', {
+      .text(0, 86, 'A / D  SELECT / 选择     E  CONFIRM / 确认', {
         fontFamily: SANS_FONT,
         fontSize: '13px',
-        color: '#b0a38b',
+        color: '#2f1d11',
       })
       .setOrigin(0.5);
     this.choicePanel = this.add
@@ -699,7 +736,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
     const accentColor = isShopkeeper ? 0xb07b49 : isPlayer ? 0x668c86 : 0x8e8068;
     this.dialogueAccent?.setFillStyle(accentColor, 1);
     this.dialogueSpeakerEn?.setColor(
-      isShopkeeper ? '#d7b377' : isPlayer ? '#a8c8c0' : '#b9aa90',
+      isShopkeeper ? '#5a2113' : isPlayer ? '#174b43' : '#3e2718',
     );
     this.dialogueContext?.setText(
       isShopkeeper
@@ -708,20 +745,39 @@ export class ShopIntroductionScene extends Phaser.Scene {
           ? 'YOUR RESPONSE / 你的回应'
           : 'SCENE / 情景',
     );
-    this.drawDialoguePortrait(beat.speakerEn);
+    this.interior?.shopkeeperVisual.playGesture(
+      isShopkeeper ? beat.shopkeeperGesture ?? 'nod' : 'idle',
+    );
+    this.drawDialoguePortrait(beat);
     this.drawSpeakerFocus(beat.speakerEn);
   }
 
-  private drawDialoguePortrait(speaker: string): void {
+  private drawDialoguePortrait(beat: DialogueBeat): void {
     const portrait = this.dialoguePortrait;
     if (!portrait) {
       return;
     }
     portrait.clear();
+    const shopkeeperPortrait = this.dialogueShopkeeperPortrait;
+    const playerPortrait = this.dialoguePlayerPortrait;
+    const shopkeeper = beat.speakerEn === 'SHOPKEEPER';
+    const player = beat.speakerEn === 'YOU';
+    shopkeeperPortrait?.setVisible(shopkeeper);
+    playerPortrait?.setVisible(player);
+    if (shopkeeper) {
+      shopkeeperPortrait?.setFrame(
+        shopkeeperFrameForGesture(beat.shopkeeperGesture ?? 'nod'),
+      );
+      return;
+    }
+    if (player) {
+      playerPortrait?.setFrame(PLAYER_PORTRAIT_FRAME);
+      return;
+    }
 
     const x = -472;
     const y = 2;
-    if (speaker === 'NARRATION') {
+    if (beat.speakerEn === 'NARRATION') {
       portrait.fillStyle(0x8e8068, 0.9);
       portrait.fillRoundedRect(x - 40, y - 45, 80, 90, 6);
       portrait.fillStyle(0x211b16, 1);
@@ -733,21 +789,6 @@ export class ShopIntroductionScene extends Phaser.Scene {
       return;
     }
 
-    const shopkeeper = speaker === 'SHOPKEEPER';
-    portrait.fillStyle(0x090807, 0.48);
-    portrait.fillEllipse(x, y + 52, 94, 28);
-    portrait.fillStyle(shopkeeper ? 0x394038 : 0x3f514d, 1);
-    portrait.fillRoundedRect(x - 37, y - 2, 74, 62, 18);
-    portrait.lineStyle(2, shopkeeper ? 0x8a977e : 0x82aaa1, 0.82);
-    portrait.strokeRoundedRect(x - 37, y - 2, 74, 62, 18);
-    portrait.fillStyle(shopkeeper ? 0x8f836f : 0x9a806d, 1);
-    portrait.fillCircle(x, y - 24, 23);
-    portrait.fillStyle(shopkeeper ? 0x4a4438 : 0x282b28, 1);
-    portrait.fillEllipse(x, y - 37, 44, 18);
-    if (!shopkeeper) {
-      portrait.fillStyle(0xb07b49, 0.9);
-      portrait.fillTriangle(x - 7, y + 4, x + 7, y + 4, x, y + 20);
-    }
   }
 
   private drawSpeakerFocus(speaker: string): void {
@@ -780,6 +821,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
     }
 
     this.dialoguePanel?.setVisible(false);
+    this.interior?.shopkeeperVisual.playGesture('idle');
     if (this.conversationDestination === 'response-choice') {
       this.openResponseChoice();
       return;

@@ -7,6 +7,7 @@ import {
   type Tomb25DFootprint,
 } from '../data/tomb25DAssetManifest';
 import { Player } from '../objects/Player';
+import { preloadPlayerAvatarAssets } from '../visuals/createPlayerAvatarVisual';
 
 const WORLD_WIDTH = 1600;
 const WORLD_HEIGHT = 1050;
@@ -36,6 +37,7 @@ export class Tomb25DPrototypeScene extends Phaser.Scene {
   }
 
   preload(): void {
+    preloadPlayerAvatarAssets(this);
     for (const asset of TOMB_25D_ASSET_LIST) {
       this.load.image(asset.key, asset.sourcePath);
     }

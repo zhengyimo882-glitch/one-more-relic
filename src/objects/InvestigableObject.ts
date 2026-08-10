@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { TOMB_FEEL } from '../config/tombFeelConfig';
 
 export type ArtifactLocationState = 'world' | 'carried';
 export type OmenTier = 0 | 1 | 2;
@@ -52,6 +53,7 @@ export class InvestigableObject {
 
   private readonly highlightObject: Phaser.GameObjects.Graphics;
   private readonly promptOffsetY: number;
+  private readonly promptText: Phaser.GameObjects.Text;
 
   constructor(scene: Phaser.Scene, config: InvestigableObjectConfig) {
     this.id = config.id;
@@ -79,7 +81,7 @@ export class InvestigableObject {
     const promptBackground = scene.add
       .rectangle(0, 0, 214, 32, 0x12100d, 0.88)
       .setStrokeStyle(1, 0x94886d, 0.75);
-    const promptText = scene.add
+    this.promptText = scene.add
       .text(0, 0, 'E  Investigate / 调查', {
         fontFamily:
           'Arial, "Noto Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif',
@@ -91,11 +93,19 @@ export class InvestigableObject {
     this.promptObject = scene.add
       .container(config.worldX, config.worldY + config.promptOffsetY, [
         promptBackground,
-        promptText,
+        this.promptText,
       ])
-      .setDepth(6)
+      .setDepth(8)
       .setVisible(false);
     this.highlightObject.setVisible(false);
+    scene.tweens.add({
+      targets: this.highlightObject,
+      alpha: { from: 0.48, to: 1 },
+      duration: TOMB_FEEL.interaction.highlightPulseMs,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.InOut',
+    });
   }
 
   distanceTo(x: number, y: number): number {
@@ -106,6 +116,10 @@ export class InvestigableObject {
     const isInWorld = this.isAvailable && this.locationState === 'world';
     this.promptObject.setVisible(isInWorld && isNearby && !this.isBeingInvestigated);
     this.highlightObject.setVisible(isInWorld && (isNearby || this.isBeingInvestigated));
+  }
+
+  setPromptText(text: string): void {
+    this.promptText.setText(text);
   }
 
   beginInvestigation(): void {
