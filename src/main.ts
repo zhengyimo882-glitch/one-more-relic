@@ -58,3 +58,27 @@ const config: Phaser.Types.Core.GameConfig = {
 };
 
 export const game = new Phaser.Game(config);
+
+const focusGameCanvas = (): void => {
+  const canvas = game.canvas;
+  if (!canvas) {
+    return;
+  }
+  canvas.tabIndex = 0;
+  canvas.focus({ preventScroll: true });
+};
+
+game.events.once(Phaser.Core.Events.READY, () => {
+  const canvas = game.canvas;
+  canvas.tabIndex = 0;
+  canvas.setAttribute('aria-label', 'ONE MORE RELIC game canvas');
+  canvas.addEventListener('pointerdown', focusGameCanvas);
+  focusGameCanvas();
+});
+
+window.addEventListener('keydown', (event) => {
+  if (event.code === 'KeyW' || event.code === 'KeyA' ||
+      event.code === 'KeyS' || event.code === 'KeyD') {
+    focusGameCanvas();
+  }
+});

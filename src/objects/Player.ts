@@ -22,6 +22,12 @@ type MovementKeys = {
 
 export class Player extends Phaser.GameObjects.Container {
   private readonly movementKeys: MovementKeys;
+  private readonly domMovementState: Record<keyof MovementKeys, boolean> = {
+    up: false,
+    down: false,
+    left: false,
+    right: false,
+  };
   private readonly avatarVisual: PlayerAvatarVisual;
   private readonly movementMode: PlayerMovementMode;
   private facing: PlayerDirection = 'up';
@@ -67,10 +73,27 @@ export class Player extends Phaser.GameObjects.Container {
       left: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
       right: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
     };
+    keyboard.addCapture([
+      Phaser.Input.Keyboard.KeyCodes.W,
+      Phaser.Input.Keyboard.KeyCodes.A,
+      Phaser.Input.Keyboard.KeyCodes.S,
+      Phaser.Input.Keyboard.KeyCodes.D,
+    ]);
+
+    // Phaser normally listens on window, but embedded browsers can move focus
+    // away from the canvas without notifying its KeyboardPlugin. Keep a small
+    // DOM-level fallback so movement remains responsive after clicking UI or
+    // switching scenes, while still leaving all scene-specific controls intact.
+    window.addEventListener('keydown', this.handleDomKeyDown, { passive: false });
+    window.addEventListener('keyup', this.handleDomKeyUp);
+    window.addEventListener('blur', this.clearDomMovementState);
 
     scene.game.events.on(Phaser.Core.Events.BLUR, this.stop, this);
     this.once(Phaser.GameObjects.Events.DESTROY, () => {
       scene.game.events.off(Phaser.Core.Events.BLUR, this.stop, this);
+      window.removeEventListener('keydown', this.handleDomKeyDown);
+      window.removeEventListener('keyup', this.handleDomKeyUp);
+      window.removeEventListener('blur', this.clearDomMovementState);
     });
   }
 
@@ -80,8 +103,8 @@ export class Player extends Phaser.GameObjects.Container {
       return;
     }
 
-    const horizontal = Number(this.movementKeys.right.isDown) - Number(this.movementKeys.left.isDown);
-    const vertical = Number(this.movementKeys.down.isDown) - Number(this.movementKeys.up.isDown);
+    const horizontal = Number(this.isDirectionDown('right')) - Number(this.isDirectionDown('left'));
+    const vertical = Number(this.isDirectionDown('down')) - Number(this.isDirectionDown('up'));
     const desiredVelocity = this.movementMode === 'isometric'
       ? new Phaser.Math.Vector2(horizontal - vertical, (horizontal + vertical) * 0.5)
       : new Phaser.Math.Vector2(horizontal, vertical);
@@ -201,6 +224,59 @@ export class Player extends Phaser.GameObjects.Container {
     }
 
     return horizontal > 0 ? 'right' : 'left';
+  }
+
+  private isDirectionDown(direction: keyof MovementKeys): boolean {
+    return this.movementKeys[direction].isDown || this.domMovementState[direction];
+  }
+
+  private readonly handleDomKeyDown = (event: KeyboardEvent): void => {
+    const direction = this.getDirectionForCode(event.code);
+    if (!direction || this.isTextInputFocused()) {
+      return;
+    }
+    this.domMovementState[direction] = true;
+    event.preventDefault();
+  };
+
+  private readonly handleDomKeyUp = (event: KeyboardEvent): void => {
+    const direction = this.getDirectionForCode(event.code);
+    if (!direction) {
+      return;
+    }
+    this.domMovementState[direction] = false;
+    event.preventDefault();
+  };
+
+  private readonly clearDomMovementState = (): void => {
+    this.domMovementState.up = false;
+    this.domMovementState.down = false;
+    this.domMovementState.left = false;
+    this.domMovementState.right = false;
+    this.stop();
+  };
+
+  private getDirectionForCode(code: string): keyof MovementKeys | undefined {
+    switch (code) {
+      case 'KeyW':
+        return 'up';
+      case 'KeyS':
+        return 'down';
+      case 'KeyA':
+        return 'left';
+      case 'KeyD':
+        return 'right';
+      default:
+        return undefined;
+    }
+  }
+
+  private isTextInputFocused(): boolean {
+    const activeElement = document.activeElement;
+    return activeElement instanceof HTMLInputElement ||
+      activeElement instanceof HTMLTextAreaElement ||
+      activeElement instanceof HTMLSelectElement ||
+      activeElement instanceof HTMLElement && activeElement.isContentEditable;
   }
 
   private stop(): void {

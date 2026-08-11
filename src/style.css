@@ -32,4 +32,5 @@ body {
 
 #game canvas {
   display: block;
+  outline: none;
 }
