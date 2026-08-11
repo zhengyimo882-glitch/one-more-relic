@@ -311,7 +311,6 @@ export class ShopIntroductionScene extends Phaser.Scene {
     this.interior = createAntiqueShopInterior(this);
     this.player = new Player(this, 640, 600, this.appearanceId);
     this.player.setDepth(antiqueShopDepthFromGround(this.player.y + 28));
-    this.player.setMovementEnabled(false);
     this.collider = this.physics.add.collider(
       this.player,
       this.interior.obstacles,
@@ -328,10 +327,12 @@ export class ShopIntroductionScene extends Phaser.Scene {
     }
     this.atmosphere?.update(this.player.x, this.player.y, this.time.now);
 
-    if (this.phase === 'free-roam') {
+    if (this.phase === 'free-roam' || this.phase === 'arriving') {
       this.player.update();
       this.player.setDepth(antiqueShopDepthFromGround(this.player.y + 28));
-      this.updateCounterPrompt();
+      if (this.phase === 'free-roam') {
+        this.updateCounterPrompt();
+      }
     } else {
       this.player.setMovementEnabled(false);
     }

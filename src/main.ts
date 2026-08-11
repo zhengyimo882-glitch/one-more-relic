@@ -3,7 +3,6 @@ import './style.css';
 import { BootScene } from './scenes/BootScene';
 import { MainMenuScene } from './scenes/MainMenuScene';
 import { StoryIntroScene } from './scenes/StoryIntroScene';
-import { CharacterSelectScene } from './scenes/CharacterSelectScene';
 import { ShopIntroductionScene } from './scenes/ShopIntroductionScene';
 import { TombScene } from './scenes/TombScene';
 import { AntiqueShopScene } from './scenes/AntiqueShopScene';
@@ -18,7 +17,6 @@ const regularScenes = [
   BootScene,
   MainMenuScene,
   StoryIntroScene,
-  CharacterSelectScene,
   ShopIntroductionScene,
   TombScene,
   AntiqueShopScene,
@@ -55,6 +53,17 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
+  input: {
+    keyboard: {
+      target: window,
+      capture: [
+        Phaser.Input.Keyboard.KeyCodes.W,
+        Phaser.Input.Keyboard.KeyCodes.A,
+        Phaser.Input.Keyboard.KeyCodes.S,
+        Phaser.Input.Keyboard.KeyCodes.D,
+      ],
+    },
+  },
 };
 
 export const game = new Phaser.Game(config);
@@ -81,4 +90,4 @@ window.addEventListener('keydown', (event) => {
       event.code === 'KeyS' || event.code === 'KeyD') {
     focusGameCanvas();
   }
-});
+}, true);

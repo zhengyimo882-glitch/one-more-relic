@@ -1,13 +1,10 @@
 import Phaser from 'phaser';
+import { DEFAULT_PLAYER_APPEARANCE_ID } from '../data/playerAppearances';
 
 const SERIF_FONT =
   'Georgia, "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif';
 const SANS_FONT =
   'Arial, "Noto Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif';
-
-interface StoryIntroSceneData {
-  startAct?: number;
-}
 
 type StoryAct = {
   english: string;
@@ -37,7 +34,6 @@ const STORY_ACTS: readonly StoryAct[] = [
 
 export class StoryIntroScene extends Phaser.Scene {
   private actIndex = 0;
-  private requestedStartAct = 0;
   private transitioning = false;
   private root?: Phaser.GameObjects.Container;
   private visual?: Phaser.GameObjects.Graphics;
@@ -53,12 +49,8 @@ export class StoryIntroScene extends Phaser.Scene {
     super('StoryIntroScene');
   }
 
-  init(data?: StoryIntroSceneData): void {
-    this.requestedStartAct = Phaser.Math.Clamp(data?.startAct ?? 0, 0, 2);
-  }
-
   create(): void {
-    this.actIndex = this.requestedStartAct;
+    this.actIndex = 0;
     this.transitioning = false;
     this.cameras.main.setBackgroundColor('#181b17');
     this.createStoryDisplay();
@@ -90,7 +82,7 @@ export class StoryIntroScene extends Phaser.Scene {
       return;
     }
     if (skipPressed) {
-      this.scene.start('CharacterSelectScene');
+      this.enterAntiqueShop();
       return;
     }
     if (escapePressed) {
@@ -164,7 +156,7 @@ export class StoryIntroScene extends Phaser.Scene {
 
   private advanceAct(): void {
     if (this.actIndex >= STORY_ACTS.length - 1) {
-      this.scene.start('CharacterSelectScene');
+      this.enterAntiqueShop();
       return;
     }
     if (!this.root) {
@@ -189,6 +181,12 @@ export class StoryIntroScene extends Phaser.Scene {
           },
         });
       },
+    });
+  }
+
+  private enterAntiqueShop(): void {
+    this.scene.start('ShopIntroductionScene', {
+      appearanceId: DEFAULT_PLAYER_APPEARANCE_ID,
     });
   }
 

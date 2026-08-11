@@ -84,16 +84,16 @@ export class Player extends Phaser.GameObjects.Container {
     // away from the canvas without notifying its KeyboardPlugin. Keep a small
     // DOM-level fallback so movement remains responsive after clicking UI or
     // switching scenes, while still leaving all scene-specific controls intact.
-    window.addEventListener('keydown', this.handleDomKeyDown, { passive: false });
-    window.addEventListener('keyup', this.handleDomKeyUp);
-    window.addEventListener('blur', this.clearDomMovementState);
+    window.addEventListener('keydown', this.handleDomKeyDown, true);
+    window.addEventListener('keyup', this.handleDomKeyUp, true);
+    window.addEventListener('blur', this.clearDomMovementState, true);
 
     scene.game.events.on(Phaser.Core.Events.BLUR, this.stop, this);
     this.once(Phaser.GameObjects.Events.DESTROY, () => {
       scene.game.events.off(Phaser.Core.Events.BLUR, this.stop, this);
-      window.removeEventListener('keydown', this.handleDomKeyDown);
-      window.removeEventListener('keyup', this.handleDomKeyUp);
-      window.removeEventListener('blur', this.clearDomMovementState);
+      window.removeEventListener('keydown', this.handleDomKeyDown, true);
+      window.removeEventListener('keyup', this.handleDomKeyUp, true);
+      window.removeEventListener('blur', this.clearDomMovementState, true);
     });
   }
 
@@ -231,21 +231,19 @@ export class Player extends Phaser.GameObjects.Container {
   }
 
   private readonly handleDomKeyDown = (event: KeyboardEvent): void => {
-    const direction = this.getDirectionForCode(event.code);
+    const direction = this.getDirectionForEvent(event);
     if (!direction || this.isTextInputFocused()) {
       return;
     }
     this.domMovementState[direction] = true;
-    event.preventDefault();
   };
 
   private readonly handleDomKeyUp = (event: KeyboardEvent): void => {
-    const direction = this.getDirectionForCode(event.code);
+    const direction = this.getDirectionForEvent(event);
     if (!direction) {
       return;
     }
     this.domMovementState[direction] = false;
-    event.preventDefault();
   };
 
   private readonly clearDomMovementState = (): void => {
@@ -256,15 +254,24 @@ export class Player extends Phaser.GameObjects.Container {
     this.stop();
   };
 
-  private getDirectionForCode(code: string): keyof MovementKeys | undefined {
-    switch (code) {
+  private getDirectionForEvent(event: KeyboardEvent): keyof MovementKeys | undefined {
+    const key = event.key.toLowerCase();
+    switch (event.code || key || String(event.keyCode)) {
       case 'KeyW':
+      case 'w':
+      case '87':
         return 'up';
       case 'KeyS':
+      case 's':
+      case '83':
         return 'down';
       case 'KeyA':
+      case 'a':
+      case '65':
         return 'left';
       case 'KeyD':
+      case 'd':
+      case '68':
         return 'right';
       default:
         return undefined;
