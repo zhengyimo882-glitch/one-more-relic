@@ -12,6 +12,7 @@ const requestedScene = new URLSearchParams(window.location.search).get('scene');
 const launchTomb25DPrototype = requestedScene === 'tomb25d';
 const launchAntiqueShop25D = requestedScene === 'shop25d';
 const launchShopIntroduction = requestedScene === 'shopintro';
+const launchTutorialTomb = requestedScene === 'tomb';
 
 const regularScenes = [
   BootScene,
@@ -36,6 +37,12 @@ const config: Phaser.Types.Core.GameConfig = {
           ...regularScenes.filter((scene) => scene !== AntiqueShopScene),
           Tomb25DPrototypeScene,
         ]
+      : launchTutorialTomb
+        ? [
+            TombScene,
+            ...regularScenes.filter((scene) => scene !== TombScene),
+            Tomb25DPrototypeScene,
+          ]
       : launchShopIntroduction
         ? [
             ShopIntroductionScene,

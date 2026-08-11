@@ -45,9 +45,19 @@ import {
   createParchmentPanel,
   preloadParchmentPanel,
 } from '../visuals/createParchmentPanel';
+import {
+  CEREMONIAL_GATE_TEXTURES,
+  createCeremonialTombGate,
+  type CeremonialTombGate,
+} from '../visuals/createCeremonialTombGate';
+import {
+  CORRIDOR_MURAL_TEXTURES,
+  createTombCorridorMurals,
+  type TombCorridorMurals,
+} from '../visuals/createTombCorridorMurals';
 
 const WORLD_WIDTH = 1600;
-const WORLD_HEIGHT = 960;
+const WORLD_HEIGHT = 1664;
 const GRID_SIZE = 32;
 const PIXEL_SCALE = 2;
 const WALL_THICKNESS = GRID_SIZE;
@@ -71,12 +81,29 @@ const COMPASS_X = COFFIN_X;
 const COMPASS_Y = COFFIN_Y;
 const ENTRANCE_X = ROOM_CENTER_X;
 const ENTRANCE_Y = 944;
+const CORRIDOR_LEFT = 608;
+const CORRIDOR_RIGHT = 992;
+const CORRIDOR_FLOOR_LEFT = 656;
+const CORRIDOR_FLOOR_RIGHT = 944;
+const CORRIDOR_BOTTOM = 1624;
+const EVACUATION_X = ROOM_CENTER_X;
+const EVACUATION_Y = 1552;
+const GATE_FIRE_DISTANCE = 292;
+const GATE_OPEN_DISTANCE = 232;
+const GATE_REVEAL_Y = 916;
 const EXIT_INTERACTION_RADIUS = 118;
 const DISTANCE_TIE_EPSILON = 0.5;
 const SERIF_FONT = VISUAL_THEME.fonts.serif;
 const SANS_FONT = VISUAL_THEME.fonts.sans;
 const TOMB_ASSET_ROOT = 'assets/imported/tomb_asset_pack';
 const GENERATED_TOMB_ASSET_ROOT = 'assets/generated/tomb_vertical_slice';
+const ORIGINAL_CORRIDOR_ASSET_ROOT = 'assets/generated/tomb_corridor_original';
+const ORIGINAL_ARTIFACT_ASSET_ROOT = 'assets/generated/tomb_artifacts_original';
+const ORIGINAL_ARTIFACT_TEXTURES = {
+  burialVessel: 'original-burial-vessel',
+  bronzeMirror: 'original-bronze-mirror',
+  geomancersCompass: 'original-geomancers-compass',
+} as const;
 const SCENERY_DEPTH_BASE = 2;
 const PLAYER_DEPTH_BASE = 2;
 const CANDLE_FRAME_RATE = 7;
@@ -270,10 +297,14 @@ export class TombScene extends Phaser.Scene {
   private levelThreeShakeElapsed = 0;
   private compassFeedbackSeconds = 0;
   private artifactCollisions = new Map<string, Phaser.GameObjects.Rectangle>();
-  private entranceGateVisual?: Phaser.GameObjects.Image;
+  private entranceGateVisual?: Phaser.GameObjects.Container;
   private entranceGateCollision?: Phaser.GameObjects.Rectangle;
   private entranceSealTimer?: Phaser.Time.TimerEvent;
-  private entranceGateTween?: Phaser.Tweens.Tween;
+  private ceremonialGate?: CeremonialTombGate;
+  private corridorMurals?: TombCorridorMurals;
+  private tombMapVeil?: Phaser.GameObjects.Rectangle;
+  private tombMapRevealed = false;
+  private entranceCrossed = false;
   private exitPrompt?: Phaser.GameObjects.Container;
   private coffinClosedLid?: Phaser.GameObjects.Image;
   private coffinOpenedLid?: Phaser.GameObjects.Image;
@@ -363,6 +394,46 @@ export class TombScene extends Phaser.Scene {
     );
     this.load.image('tomb-main-sheet', `${TOMB_ASSET_ROOT}/mainlevbuild.png`);
     this.load.image('tomb-decorative-sheet', `${TOMB_ASSET_ROOT}/decorative.png`);
+    this.load.image(
+      CEREMONIAL_GATE_TEXTURES.closed,
+      `${ORIGINAL_CORRIDOR_ASSET_ROOT}/gate_closed.png`,
+    );
+    this.load.image(
+      CEREMONIAL_GATE_TEXTURES.open,
+      `${ORIGINAL_CORRIDOR_ASSET_ROOT}/gate_open.png`,
+    );
+    this.load.image(
+      CEREMONIAL_GATE_TEXTURES.ghostFire,
+      `${ORIGINAL_CORRIDOR_ASSET_ROOT}/ghost_fire.png`,
+    );
+    this.load.image(
+      CORRIDOR_MURAL_TEXTURES.leftUpper,
+      `${ORIGINAL_CORRIDOR_ASSET_ROOT}/mural_left_upper.png`,
+    );
+    this.load.image(
+      CORRIDOR_MURAL_TEXTURES.leftLower,
+      `${ORIGINAL_CORRIDOR_ASSET_ROOT}/mural_left_lower.png`,
+    );
+    this.load.image(
+      CORRIDOR_MURAL_TEXTURES.rightUpper,
+      `${ORIGINAL_CORRIDOR_ASSET_ROOT}/mural_right_upper.png`,
+    );
+    this.load.image(
+      CORRIDOR_MURAL_TEXTURES.rightLower,
+      `${ORIGINAL_CORRIDOR_ASSET_ROOT}/mural_right_lower.png`,
+    );
+    this.load.image(
+      ORIGINAL_ARTIFACT_TEXTURES.burialVessel,
+      `${ORIGINAL_ARTIFACT_ASSET_ROOT}/burial_vessel.png`,
+    );
+    this.load.image(
+      ORIGINAL_ARTIFACT_TEXTURES.bronzeMirror,
+      `${ORIGINAL_ARTIFACT_ASSET_ROOT}/bronze_mirror.png`,
+    );
+    this.load.image(
+      ORIGINAL_ARTIFACT_TEXTURES.geomancersCompass,
+      `${ORIGINAL_ARTIFACT_ASSET_ROOT}/geomancers_compass.png`,
+    );
 
     for (let frame = 1; frame <= 4; frame += 1) {
       const paddedFrame = frame.toString().padStart(2, '0');
@@ -410,6 +481,13 @@ export class TombScene extends Phaser.Scene {
     this.textures
       .get('generated-wall-shadow')
       .setFilter(Phaser.Textures.FilterMode.LINEAR);
+    for (const textureKey of [
+      ...Object.values(CEREMONIAL_GATE_TEXTURES),
+      ...Object.values(CORRIDOR_MURAL_TEXTURES),
+      ...Object.values(ORIGINAL_ARTIFACT_TEXTURES),
+    ]) {
+      this.textures.get(textureKey).setFilter(Phaser.Textures.FilterMode.LINEAR);
+    }
   }
 
   private addTextureFrames(textureKey: string, frames: TombTextureFrame[]): void {
@@ -468,6 +546,7 @@ export class TombScene extends Phaser.Scene {
       playerLightEnabled: false,
     });
     this.drawTombGreybox();
+    this.corridorMurals = createTombCorridorMurals(this);
     this.artifactSpots = this.createArtifactSpots();
     this.investigableObjects = this.createInvestigableObjects();
     const obstacles = this.createCollisionObstacles();
@@ -481,6 +560,7 @@ export class TombScene extends Phaser.Scene {
       this,
       this.getTombWallSegments(),
     );
+    this.createTombMapVeil();
     this.wallShadow = new WallShadowSystem(this, 846, 806);
     this.footstepRipples = new FootstepRippleSystem(
       this,
@@ -528,6 +608,7 @@ export class TombScene extends Phaser.Scene {
     }
     const lampAngle = this.directionalLamp?.getAngleRadians() ?? -Math.PI / 2;
     this.player.setAimAngle(lampAngle);
+    this.updateCorridorEntrance(time);
     this.wallShadow?.setLightOn(this.directionalLamp?.isOn() ?? true);
     const apparitionPosition = this.wallShadow?.getWorldPosition();
     this.wallShadow?.update(
@@ -648,7 +729,11 @@ export class TombScene extends Phaser.Scene {
     this.levelThreeShakeElapsed = 0;
     this.compassFeedbackSeconds = 0;
     this.entranceSealTimer = undefined;
-    this.entranceGateTween = undefined;
+    this.ceremonialGate = undefined;
+    this.corridorMurals = undefined;
+    this.tombMapVeil = undefined;
+    this.tombMapRevealed = false;
+    this.entranceCrossed = false;
     this.shopkeeperHideTimer = undefined;
     this.shopkeeperFadeTween = undefined;
     this.atmosphere = undefined;
@@ -663,27 +748,28 @@ export class TombScene extends Phaser.Scene {
   }
 
   private createPlayer(): Player {
-    // The player begins inside the south entrance and initially faces north.
+    // The player begins at the far end of the mural-lined burial passage.
     return new Player(
       this,
-      ROOM_CENTER_X,
-      872,
+      EVACUATION_X,
+      EVACUATION_Y,
       this.appearanceId,
     );
   }
 
   private createEntranceGate(obstacles: Phaser.Physics.Arcade.StaticGroup): void {
-    this.entranceGateVisual = this.add
-      .image(ENTRANCE_X, ENTRANCE_Y + WALL_THICKNESS, 'tomb-main-sheet', 'gate-bars')
-      .setOrigin(0.5, 0.5)
-      .setDepth(3.15)
-      .setVisible(true);
+    this.ceremonialGate = createCeremonialTombGate(
+      this,
+      ENTRANCE_X,
+      ENTRANCE_Y,
+    );
+    this.entranceGateVisual = this.ceremonialGate.container;
 
     this.entranceGateCollision = this.add.rectangle(
       ENTRANCE_X,
       ENTRANCE_Y,
-      ENTRANCE_WIDTH,
-      WALL_THICKNESS,
+      ENTRANCE_WIDTH * 2,
+      34,
       0x000000,
       0,
     );
@@ -700,13 +786,14 @@ export class TombScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
     this.exitPrompt = this.add
-      .container(ENTRANCE_X, ENTRANCE_Y - 72, [promptBackground, promptText])
+      .container(EVACUATION_X, EVACUATION_Y - 62, [promptBackground, promptText])
       .setDepth(8)
       .setVisible(false);
   }
 
   private startEntranceSequence(): void {
-    this.entranceSealTimer = this.time.delayedCall(550, () => this.sealEntrance());
+    this.entranceSealTimer?.remove(false);
+    this.entranceSealTimer = this.time.delayedCall(650, () => this.sealEntrance());
   }
 
   private startArrivalIntroduction(): void {
@@ -829,8 +916,8 @@ export class TombScene extends Phaser.Scene {
     this.arrivalBag?.destroy(true);
     this.arrivalBag = undefined;
     this.updateObjectiveUI(
-      'Enter the offering chamber. Notice what breaks the pattern.',
-      '进入供物室，观察阵列中不协调的位置。',
+      'Follow the mural passage. Approach the red gate at its far end.',
+      '沿着壁画墓道前进，靠近尽头的朱漆墓门。',
     );
     this.instructionText?.setVisible(true);
     this.escapeHintText?.setVisible(true);
@@ -838,22 +925,16 @@ export class TombScene extends Phaser.Scene {
     this.locationTitleEnglish?.setVisible(true);
     this.locationTitleChinese?.setVisible(true);
     this.player?.setMovementEnabled(true);
-    this.startEntranceSequence();
   }
 
   private sealEntrance(): void {
-    if (this.tutorialPhase !== 'entering' || !this.entranceGateVisual) {
+    if (this.tutorialPhase !== 'entering' || !this.ceremonialGate) {
       return;
     }
 
     this.tutorialPhase = 'sealed';
-    this.entranceGateTween = this.tweens.add({
-      targets: this.entranceGateVisual,
-      y: ENTRANCE_Y,
-      duration: 300,
-      ease: 'Sine.Out',
-      onComplete: () => this.cameras.main.shake(90, 0.001),
-    });
+    this.setEntranceCollisionEnabled(true);
+    this.ceremonialGate.close(360, () => this.cameras.main.shake(90, 0.001));
     this.updateObjectiveUI(
       'Disturb the offering that breaks the pattern.',
       '移动那件破坏供物阵列规律的器物。',
@@ -866,29 +947,106 @@ export class TombScene extends Phaser.Scene {
   }
 
   private releaseEntrance(): void {
+    this.setEntranceCollisionEnabled(false);
+    this.ceremonialGate?.open(420);
+  }
+
+  private createTombMapVeil(): void {
+    // This sits above the flashlight's additive cone. Until the threshold is
+    // crossed, the chambers behind the gate remain absolute black rather than
+    // becoming faintly visible through the beam.
+    this.tombMapVeil = this.add
+      .rectangle(800, (ENTRANCE_Y - 44) / 2, 1280, ENTRANCE_Y - 44, 0x000000, 1)
+      .setDepth(7.02);
+  }
+
+  private updateCorridorEntrance(time: number): void {
+    if (!this.player) {
+      return;
+    }
+    this.ceremonialGate?.update(time);
+    this.corridorMurals?.update(
+      this.rippleVisibilityResolver,
+      this.directionalLamp?.getBrightness() ?? 0,
+    );
+
+    const gateDistance = Phaser.Math.Distance.Between(
+      this.player.x,
+      this.player.y,
+      ENTRANCE_X,
+      ENTRANCE_Y,
+    );
+    const isNearGate = gateDistance <= GATE_FIRE_DISTANCE;
+    this.ceremonialGate?.setGhostFireLit(isNearGate);
+    if (!this.arrivalIntroductionActive && gateDistance <= 430) {
+      this.locationTitleEnglish?.setVisible(false);
+      this.locationTitleChinese?.setVisible(false);
+    }
+
+    if (
+      this.tutorialPhase === 'entering' &&
+      !this.entranceCrossed &&
+      gateDistance <= GATE_OPEN_DISTANCE &&
+      this.ceremonialGate?.getState() === 'closed'
+    ) {
+      this.ceremonialGate.open(430, () => this.setEntranceCollisionEnabled(false));
+      this.proceduralAudio?.playCue('door-unlock');
+    }
+
+    if (
+      this.tutorialPhase === 'entering' &&
+      !this.entranceCrossed &&
+      this.ceremonialGate?.getState() === 'open' &&
+      this.player.y <= GATE_REVEAL_Y
+    ) {
+      this.entranceCrossed = true;
+      this.revealTombMap();
+      this.startEntranceSequence();
+    }
+  }
+
+  private revealTombMap(): void {
+    if (this.tombMapRevealed) {
+      return;
+    }
+    this.tombMapRevealed = true;
+    if (this.tombMapVeil) {
+      const veil = this.tombMapVeil;
+      this.tweens.add({
+        targets: veil,
+        alpha: 0,
+        duration: 380,
+        ease: 'Sine.Out',
+        onComplete: () => {
+          veil.destroy();
+          if (this.tombMapVeil === veil) {
+            this.tombMapVeil = undefined;
+          }
+        },
+      });
+    }
+    this.updateObjectiveUI(
+      'Enter the offering chamber. Notice what breaks the pattern.',
+      '进入供物室，观察阵列中不协调的位置。',
+    );
+  }
+
+  private setEntranceCollisionEnabled(enabled: boolean): void {
     const gateBody = this.entranceGateCollision?.body as
       | Phaser.Physics.Arcade.StaticBody
       | undefined;
-    if (gateBody) {
-      gateBody.enable = false;
+    if (!gateBody) {
+      return;
     }
-
-    if (this.entranceGateVisual) {
-      this.entranceGateTween?.stop();
-      this.entranceGateTween = this.tweens.add({
-        targets: this.entranceGateVisual,
-        y: ENTRANCE_Y + WALL_THICKNESS,
-        alpha: 0.35,
-        duration: 300,
-        ease: 'Sine.In',
-      });
+    gateBody.enable = enabled;
+    if (enabled) {
+      gateBody.updateFromGameObject();
     }
   }
 
   private cleanupTombScene(): void {
     this.entranceSealTimer?.remove(false);
     this.shopkeeperHideTimer?.remove(false);
-    this.entranceGateTween?.stop();
     this.shopkeeperFadeTween?.stop();
     this.cameras.main?.resetFX();
     this.game.canvas.style.imageRendering = this.previousCanvasImageRendering;
@@ -902,6 +1060,9 @@ export class TombScene extends Phaser.Scene {
     this.directionalLamp?.destroy();
     this.proceduralAudio?.destroy();
     this.wallShadow?.destroy();
+    this.corridorMurals?.destroy();
+    this.ceremonialGate?.destroy();
+    this.tombMapVeil?.destroy();
     this.input.keyboard?.off('keydown', this.ensureAudioStarted, this);
   }
 
@@ -1520,6 +1681,12 @@ export class TombScene extends Phaser.Scene {
     floor.fillRect(1048, 464, 64, 80);
     floor.fillRect(744, 598, 112, 202);
     floor.fillRect(752, 768, 96, 176);
+    floor.fillRect(
+      CORRIDOR_FLOOR_LEFT,
+      ENTRANCE_Y,
+      CORRIDOR_FLOOR_RIGHT - CORRIDOR_FLOOR_LEFT,
+      CORRIDOR_BOTTOM - ENTRANCE_Y,
+    );
   }
 
   private createTiledFloor(): void {
@@ -1541,6 +1708,12 @@ export class TombScene extends Phaser.Scene {
       { x: 1048, y: 464, width: 64, height: 80 },
       { x: 744, y: 598, width: 112, height: 202 },
       { x: 752, y: 768, width: 96, height: 176 },
+      {
+        x: CORRIDOR_FLOOR_LEFT,
+        y: ENTRANCE_Y,
+        width: CORRIDOR_FLOOR_RIGHT - CORRIDOR_FLOOR_LEFT,
+        height: CORRIDOR_BOTTOM - ENTRANCE_Y,
+      },
     ];
 
     floorAreas.forEach((area, index) => {
@@ -1597,6 +1770,22 @@ export class TombScene extends Phaser.Scene {
     details.lineBetween(800, 598, 800, ENTRANCE_Y);
     details.lineBetween(488, 504, 552, 504);
     details.lineBetween(1048, 504, 1112, 504);
+
+    // Long processional burial passage: narrow stone courses draw the eye to
+    // the ceremonial gate while keeping the central walking lane unobstructed.
+    details.lineStyle(1, 0x879082, 0.25);
+    for (let x = CORRIDOR_FLOOR_LEFT; x <= CORRIDOR_FLOOR_RIGHT; x += GRID_SIZE) {
+      details.lineBetween(x, ENTRANCE_Y, x, CORRIDOR_BOTTOM);
+    }
+    for (let y = ENTRANCE_Y; y <= CORRIDOR_BOTTOM; y += GRID_SIZE) {
+      details.lineBetween(CORRIDOR_FLOOR_LEFT, y, CORRIDOR_FLOOR_RIGHT, y);
+    }
+    details.lineStyle(2, 0x9a8666, 0.27);
+    details.lineBetween(708, ENTRANCE_Y, 708, CORRIDOR_BOTTOM);
+    details.lineBetween(892, ENTRANCE_Y, 892, CORRIDOR_BOTTOM);
+    for (let y = 1016; y < CORRIDOR_BOTTOM; y += 112) {
+      details.lineBetween(708, y, 892, y);
+    }
 
     // Each chamber has its own floor language so its purpose reads at a glance.
     details.lineStyle(2, 0x9a8666, 0.34);
@@ -1731,6 +1920,10 @@ export class TombScene extends Phaser.Scene {
       { x: 848, y: 768, width: 112, height: 32 },
       { x: 720, y: 768, width: 32, height: 192 },
       { x: 848, y: 768, width: 32, height: 192 },
+      { x: CORRIDOR_LEFT, y: ENTRANCE_Y, width: 48, height: CORRIDOR_BOTTOM - ENTRANCE_Y },
+      { x: CORRIDOR_FLOOR_RIGHT, y: ENTRANCE_Y, width: 48, height: CORRIDOR_BOTTOM - ENTRANCE_Y },
+      { x: CORRIDOR_LEFT, y: CORRIDOR_BOTTOM - 32, width: 744 - CORRIDOR_LEFT, height: 32 },
+      { x: 856, y: CORRIDOR_BOTTOM - 32, width: CORRIDOR_RIGHT - 856, height: 32 },
     ];
   }
 
@@ -1748,6 +1941,12 @@ export class TombScene extends Phaser.Scene {
       { x: 1112, y: 442, width: 266, height: 146 },
       { x: 672, y: 652, width: 256, height: 116 },
       { x: 752, y: 768, width: 96, height: 192 },
+      {
+        x: CORRIDOR_FLOOR_LEFT,
+        y: ENTRANCE_Y,
+        width: CORRIDOR_FLOOR_RIGHT - CORRIDOR_FLOOR_LEFT,
+        height: CORRIDOR_BOTTOM - ENTRANCE_Y,
+      },
     ];
   }
 
@@ -2007,7 +2206,7 @@ export class TombScene extends Phaser.Scene {
         interactionRadius: 96,
         locationState: 'world',
         displaySpotId: OFFERING_CORRECT_SLOT_ID,
-        promptOffsetY: -72,
+        promptOffsetY: -116,
         visualObject: leftObject.container,
         highlightObject: leftObject.highlight,
       }),
@@ -2029,7 +2228,7 @@ export class TombScene extends Phaser.Scene {
         interactionRadius: 96,
         locationState: 'world',
         displaySpotId: 'right-display-spot',
-        promptOffsetY: -78,
+        promptOffsetY: -128,
         visualObject: rightObject.container,
         highlightObject: rightObject.highlight,
       }),
@@ -2052,7 +2251,7 @@ export class TombScene extends Phaser.Scene {
         locationState: 'world',
         displaySpotId: 'coffin-interior',
         isAvailable: false,
-        promptOffsetY: -56,
+        promptOffsetY: -72,
         visualObject: compassObject.container,
         highlightObject: compassObject.highlight,
       }),
@@ -2099,15 +2298,15 @@ export class TombScene extends Phaser.Scene {
   } {
     const shadow = this.add.graphics();
     shadow.fillStyle(0x0b0d0b, 0.38);
-    shadow.fillEllipse(0, 14, 42, 18);
+    shadow.fillEllipse(0, 3, 58, 18);
     const vessel = this.add
-      .image(0, 0, 'tomb-decorative-sheet', 'urn-purple')
-      .setScale(PIXEL_SCALE)
-      .setOrigin(0.5, 0.5);
+      .image(0, 0, ORIGINAL_ARTIFACT_TEXTURES.burialVessel)
+      .setOrigin(0.5, 0.95)
+      .setDisplaySize(65, 96);
 
     const highlight = this.add.graphics();
     highlight.lineStyle(2, 0xc2b58f, 0.76);
-    highlight.strokeCircle(0, 0, 22);
+    highlight.strokeRoundedRect(-37, -95, 74, 101, 10);
 
     return {
       container: this.add
@@ -2124,28 +2323,21 @@ export class TombScene extends Phaser.Scene {
     container: Phaser.GameObjects.Container;
     highlight: Phaser.GameObjects.Graphics;
   } {
-    const base = this.add.graphics();
-    base.fillStyle(0x667b72, 1);
-    base.fillCircle(0, -7, 34);
-    base.lineStyle(3, 0xb0c0b0, 0.98);
-    base.strokeCircle(0, -7, 34);
-    base.fillStyle(0x34413d, 1);
-    base.fillCircle(0, -7, 25);
-    base.lineStyle(2, 0x748078, 0.65);
-    base.strokeCircle(0, -7, 25);
-    base.fillStyle(0x748074, 1);
-    base.fillRoundedRect(-13, 26, 26, 20, 4);
-    base.lineStyle(2, 0x89988a, 0.8);
-    base.strokeRoundedRect(-13, 26, 26, 20, 4);
+    const shadow = this.add.graphics();
+    shadow.fillStyle(0x0b0d0b, 0.4);
+    shadow.fillEllipse(0, 3, 72, 20);
+    const mirror = this.add
+      .image(0, 0, ORIGINAL_ARTIFACT_TEXTURES.bronzeMirror)
+      .setOrigin(0.5, 0.95)
+      .setDisplaySize(82, 112);
 
     const highlight = this.add.graphics();
     highlight.lineStyle(3, 0xc2b58f, 0.7);
-    highlight.strokeCircle(0, -7, 39);
-    highlight.strokeRoundedRect(-17, 22, 34, 28, 5);
+    highlight.strokeRoundedRect(-45, -111, 90, 118, 12);
 
     return {
       container: this.add
-        .container(x, y, [base, highlight])
+        .container(x, y, [shadow, mirror, highlight])
         .setDepth(this.getSceneryDepth(y)),
       highlight,
     };
@@ -2158,28 +2350,20 @@ export class TombScene extends Phaser.Scene {
     container: Phaser.GameObjects.Container;
     highlight: Phaser.GameObjects.Graphics;
   } {
-    const base = this.add.graphics();
-    base.fillStyle(0x978463, 1);
-    base.fillCircle(0, 0, 26);
-    base.lineStyle(3, 0xd2bf91, 0.98);
-    base.strokeCircle(0, 0, 26);
-    base.fillStyle(0x414e44, 1);
-    base.fillCircle(0, 0, 18);
-    base.lineStyle(1, 0x918d72, 0.85);
-    base.strokeCircle(0, 0, 18);
-    base.lineBetween(-16, 0, 16, 0);
-    base.lineBetween(0, -16, 0, 16);
-    base.fillStyle(0xb9aa82, 1);
-    base.fillTriangle(0, -15, -4, 4, 4, 4);
-    base.fillStyle(0x59645b, 1);
-    base.fillTriangle(0, 15, -4, -4, 4, -4);
+    const shadow = this.add.graphics();
+    shadow.fillStyle(0x0b0d0b, 0.36);
+    shadow.fillEllipse(0, 7, 68, 18);
+    const compass = this.add
+      .image(0, 0, ORIGINAL_ARTIFACT_TEXTURES.geomancersCompass)
+      .setOrigin(0.5, 0.84)
+      .setDisplaySize(78, 68);
 
     const highlight = this.add.graphics();
     highlight.lineStyle(3, 0xc2b58f, 0.72);
-    highlight.strokeCircle(0, 0, 31);
+    highlight.strokeRoundedRect(-43, -58, 86, 72, 8);
 
     const container = this.add
-      .container(x, y, [base, highlight])
+      .container(x, y, [shadow, compass, highlight])
       .setDepth(this.getSceneryDepth(y));
     container.setVisible(false);
 
@@ -2248,17 +2432,17 @@ export class TombScene extends Phaser.Scene {
       }
     }
 
-    if (this.tutorialPhase === 'objective-complete') {
-      const exitDistance = Phaser.Math.Distance.Between(
-        this.player.x,
-        this.player.y,
-        ENTRANCE_X,
-        ENTRANCE_Y,
-      );
-      if (
-        exitDistance <=
-          EXIT_INTERACTION_RADIUS * TOMB_FEEL.interaction.radiusMultiplier &&
-        this.isInteractionVisible(ENTRANCE_X, ENTRANCE_Y)
+      if (this.tutorialPhase === 'objective-complete') {
+        const exitDistance = Phaser.Math.Distance.Between(
+          this.player.x,
+          this.player.y,
+          EVACUATION_X,
+          EVACUATION_Y,
+        );
+        if (
+          exitDistance <=
+            EXIT_INTERACTION_RADIUS * TOMB_FEEL.interaction.radiusMultiplier &&
+          this.isInteractionVisible(EVACUATION_X, EVACUATION_Y)
       ) {
         candidates.push({
           kind: 'exit',
@@ -3115,25 +3299,10 @@ export class TombScene extends Phaser.Scene {
     nextPhase: TutorialTombPhase = 'coffin-opened',
   ): void {
     this.tutorialPhase = nextPhase;
-    const gateBody = this.entranceGateCollision?.body as
-      | Phaser.Physics.Arcade.StaticBody
-      | undefined;
-    if (gateBody) {
-      gateBody.enable = true;
-      gateBody.updateFromGameObject();
-    }
+    this.setEntranceCollisionEnabled(true);
     this.exitPrompt?.setVisible(false);
     this.nearbyInteraction = undefined;
-    this.entranceGateTween?.stop();
-    if (this.entranceGateVisual) {
-      this.entranceGateVisual.setVisible(true).setAlpha(1);
-      this.entranceGateTween = this.tweens.add({
-        targets: this.entranceGateVisual,
-        y: ENTRANCE_Y,
-        duration: 180,
-        ease: 'Sine.Out',
-      });
-    }
+    this.ceremonialGate?.close(210);
   }
 
   private isOriginalArrangementRestored(): boolean {
@@ -3173,8 +3342,8 @@ export class TombScene extends Phaser.Scene {
       if (!wasReady) {
         this.proceduralAudio?.playCue('door-unlock');
         this.updateObjectiveUI(
-          'Everything is back in its original place. Leave with the Geomancer’s Compass.',
-          '墓中物件已全部归回原位。带着风水罗盘从入口离开。',
+          'Everything is back in place. Carry the compass to the far end of the burial passage.',
+          '墓中物件已全部归回原位。带着风水罗盘返回墓道最远端撤离。',
         );
         this.showShopkeeperMessage(
           'released',
