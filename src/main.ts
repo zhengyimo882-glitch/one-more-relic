@@ -7,12 +7,15 @@ import { ShopIntroductionScene } from './scenes/ShopIntroductionScene';
 import { TombScene } from './scenes/TombScene';
 import { AntiqueShopScene } from './scenes/AntiqueShopScene';
 import { Tomb25DPrototypeScene } from './scenes/Tomb25DPrototypeScene';
+import { PauseMenuScene } from './scenes/PauseMenuScene';
+import { ShopGrowthScene } from './scenes/ShopGrowthScene';
 
 const requestedScene = new URLSearchParams(window.location.search).get('scene');
 const launchTomb25DPrototype = requestedScene === 'tomb25d';
-const launchAntiqueShop25D = requestedScene === 'shop25d';
+const launchAntiqueShop = requestedScene === 'shop' || requestedScene === 'shop25d';
 const launchShopIntroduction = requestedScene === 'shopintro';
 const launchTutorialTomb = requestedScene === 'tomb';
+const launchShopGrowth = requestedScene === 'shopgrowth';
 
 const regularScenes = [
   BootScene,
@@ -21,6 +24,8 @@ const regularScenes = [
   ShopIntroductionScene,
   TombScene,
   AntiqueShopScene,
+  PauseMenuScene,
+  ShopGrowthScene,
 ];
 
 const config: Phaser.Types.Core.GameConfig = {
@@ -29,9 +34,11 @@ const config: Phaser.Types.Core.GameConfig = {
   width: 1280,
   height: 720,
   backgroundColor: '#111310',
-  scene: launchTomb25DPrototype
+  scene: launchShopGrowth
+    ? [ShopGrowthScene, ...regularScenes.filter((scene) => scene !== ShopGrowthScene), Tomb25DPrototypeScene]
+    : launchTomb25DPrototype
     ? [Tomb25DPrototypeScene, ...regularScenes]
-    : launchAntiqueShop25D
+    : launchAntiqueShop
       ? [
           AntiqueShopScene,
           ...regularScenes.filter((scene) => scene !== AntiqueShopScene),
@@ -74,6 +81,10 @@ const config: Phaser.Types.Core.GameConfig = {
 };
 
 export const game = new Phaser.Game(config);
+
+if (import.meta.env.DEV) {
+  (window as Window & { __GAME__?: Phaser.Game }).__GAME__ = game;
+}
 
 const focusGameCanvas = (): void => {
   const canvas = game.canvas;

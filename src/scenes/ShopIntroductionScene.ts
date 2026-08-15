@@ -8,8 +8,11 @@ import { Player } from '../objects/Player';
 import {
   ANTIQUE_SHOP_HEIGHT,
   ANTIQUE_SHOP_WIDTH,
+  SHOP_LAYOUT,
   antiqueShopDepthFromGround,
   createAntiqueShopInterior,
+  preloadAntiqueShopInteriorAssets,
+  SHOP_INTERIOR_TEXTURES,
   type AntiqueShopInterior,
 } from './shared/createAntiqueShopInterior';
 import {
@@ -34,6 +37,13 @@ import {
   createParchmentPanel,
   preloadParchmentPanel,
 } from '../visuals/createParchmentPanel';
+import { ShopAudioSystem } from '../systems/ShopAudioSystem';
+import { isPauseButtonPressed, openPauseMenu } from './PauseMenuScene';
+import {
+  createStyleBoardPanel,
+  createStyleBoardPrompt,
+  UI_STYLE_BOARD,
+} from '../ui/styleBoardUi';
 
 const SERIF_FONT = VISUAL_THEME.fonts.serif;
 const SANS_FONT = VISUAL_THEME.fonts.sans;
@@ -250,11 +260,13 @@ export class ShopIntroductionScene extends Phaser.Scene {
   private transitionTimer?: Phaser.Time.TimerEvent;
   private collider?: Phaser.Physics.Arcade.Collider;
   private atmosphere?: ProceduralAtmosphere;
+  private shopAudio?: ShopAudioSystem;
 
   private interactKey?: Phaser.Input.Keyboard.Key;
   private enterKey?: Phaser.Input.Keyboard.Key;
   private leftKey?: Phaser.Input.Keyboard.Key;
   private rightKey?: Phaser.Input.Keyboard.Key;
+  private escapeKey?: Phaser.Input.Keyboard.Key;
 
   private locationUI?: Phaser.GameObjects.Container;
   private objectiveUI?: Phaser.GameObjects.Container;
@@ -287,6 +299,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
     preloadPlayerAvatarAssets(this);
     preloadShopkeeperAssets(this);
     preloadParchmentPanel(this);
+    preloadAntiqueShopInteriorAssets(this);
   }
 
   init(data: ShopIntroductionSceneData): void {
@@ -297,6 +310,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
 
   create(): void {
     this.resetState();
+    this.shopAudio = new ShopAudioSystem();
     this.physics.world.setBounds(0, 0, ANTIQUE_SHOP_WIDTH, ANTIQUE_SHOP_HEIGHT);
     this.cameras.main.setBackgroundColor('#111310');
     this.atmosphere = createProceduralAtmosphere(this, {
@@ -309,7 +323,12 @@ export class ShopIntroductionScene extends Phaser.Scene {
       ],
     });
     this.interior = createAntiqueShopInterior(this);
-    this.player = new Player(this, 640, 600, this.appearanceId);
+    this.player = new Player(
+      this,
+      SHOP_LAYOUT.playerSpawn.x,
+      SHOP_LAYOUT.playerSpawn.y,
+      this.appearanceId,
+    );
     this.player.setDepth(antiqueShopDepthFromGround(this.player.y + 28));
     this.collider = this.physics.add.collider(
       this.player,
@@ -322,7 +341,11 @@ export class ShopIntroductionScene extends Phaser.Scene {
   }
 
   update(): void {
-    if (!this.player || !this.interactKey || !this.enterKey) {
+    if (!this.player || !this.interactKey || !this.enterKey || !this.escapeKey) {
+      return;
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.escapeKey) || isPauseButtonPressed(this)) {
+      openPauseMenu(this);
       return;
     }
     this.atmosphere?.update(this.player.x, this.player.y, this.time.now);
@@ -385,6 +408,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
     this.enterKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
     this.leftKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
     this.rightKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
+    this.escapeKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
   }
 
   private createFixedUI(): void {
@@ -421,9 +445,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
       .setDepth(100)
       .setScrollFactor(0);
 
-    const objectiveBg = this.add
-      .rectangle(0, 0, 300, 96, 0x1d1a16, 0.92)
-      .setStrokeStyle(1, 0xa58d69, 0.84);
+    const objectiveBg = createStyleBoardPanel(this, 300, 96, 'thin', 0.94);
     this.objectiveUI = this.add
       .container(this.scale.width - 174, 78, [
         objectiveBg,
@@ -432,44 +454,37 @@ export class ShopIntroductionScene extends Phaser.Scene {
             fontFamily: SANS_FONT,
             fontSize: '12px',
             fontStyle: 'bold',
-            color: '#cbb68c',
+            color: UI_STYLE_BOARD.colors.muted,
           }),
         this.add.text(-132, -22, '当前目标', {
           fontFamily: SANS_FONT,
           fontSize: '11px',
-          color: '#a9a08e',
+          color: UI_STYLE_BOARD.colors.muted,
         }),
         this.add.text(-132, -1, 'Show the brass tally to the shopkeeper.', {
           fontFamily: SERIF_FONT,
           fontSize: '15px',
-          color: '#e2d8c2',
+          color: UI_STYLE_BOARD.colors.textBright,
           wordWrap: { width: 264 },
         }),
         this.add.text(-132, 27, '把铜牌交给古玩店老板。', {
           fontFamily: SERIF_FONT,
           fontSize: '13px',
-          color: '#b9af9c',
+          color: UI_STYLE_BOARD.colors.text,
         }),
       ])
       .setDepth(100)
       .setScrollFactor(0)
       .setVisible(false);
 
-    const promptBg = this.add
-      .rectangle(0, 0, 212, 36, 0x1b1814, 0.94)
-      .setStrokeStyle(1, 0xb49b73, 0.86);
-    this.interactionPrompt = this.add
-      .container(this.interior?.promptX ?? 810, this.interior?.promptY ?? 318, [
-        promptBg,
-        this.add
-          .text(0, 0, 'E  SHOW THE TALLY / 出示铜牌', {
-            fontFamily: SANS_FONT,
-            fontSize: '13px',
-            fontStyle: 'bold',
-            color: '#eadbb8',
-          })
-          .setOrigin(0.5),
-      ])
+    this.interactionPrompt = createStyleBoardPrompt(
+      this,
+      'E',
+      'SHOW THE TALLY / 出示铜牌',
+      258,
+      42,
+    )
+      .setPosition(this.interior?.promptX ?? 810, this.interior?.promptY ?? 318)
       .setDepth(20)
       .setVisible(false);
 
@@ -683,6 +698,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
     this.objectiveUI?.setVisible(false);
     this.interactionPrompt?.setVisible(false);
     this.interior.interactionHighlight.setVisible(false);
+    this.shopAudio?.playSfx('interact');
     this.createTallyVisual();
     this.startConversation(OPENING_BEATS, 'response-choice');
   }
@@ -714,6 +730,13 @@ export class ShopIntroductionScene extends Phaser.Scene {
       `${String(this.dialogueIndex + 1).padStart(2, '0')} / ${String(this.dialogueBeats.length).padStart(2, '0')}`,
     );
     this.updateDialoguePresentation(beat);
+    if (beat.speakerEn === 'SHOPKEEPER') {
+      this.shopAudio?.speakEnglish(beat.textEn, 'shopkeeper');
+    } else if (beat.speakerEn === 'YOU') {
+      this.shopAudio?.speakEnglish(beat.textEn, 'player');
+    } else {
+      this.shopAudio?.stopVoice();
+    }
 
     const textTargets = [
       this.dialogueSpeakerEn,
@@ -808,13 +831,25 @@ export class ShopIntroductionScene extends Phaser.Scene {
     const y = isShopkeeper ? 210 : (this.player?.y ?? 360);
     const color = isShopkeeper ? 0xc18c51 : 0x75a69c;
     focus.setVisible(true);
-    focus.fillStyle(color, 0.08);
-    focus.fillEllipse(x, y, 104, 128);
-    focus.lineStyle(2, color, 0.74);
-    focus.strokeEllipse(x, y, 104, 128);
+    const halfW = 48;
+    const halfH = 58;
+    const corner = 16;
+    focus.lineStyle(3, color, 0.88);
+    focus.lineBetween(x - halfW, y - halfH + corner, x - halfW, y - halfH);
+    focus.lineBetween(x - halfW, y - halfH, x - halfW + corner, y - halfH);
+    focus.lineBetween(x + halfW - corner, y - halfH, x + halfW, y - halfH);
+    focus.lineBetween(x + halfW, y - halfH, x + halfW, y - halfH + corner);
+    focus.lineBetween(x - halfW, y + halfH - corner, x - halfW, y + halfH);
+    focus.lineBetween(x - halfW, y + halfH, x - halfW + corner, y + halfH);
+    focus.lineBetween(x + halfW - corner, y + halfH, x + halfW, y + halfH);
+    focus.lineBetween(x + halfW, y + halfH, x + halfW, y + halfH - corner);
+    focus.fillStyle(color, 0.92);
+    focus.fillTriangle(x, y + halfH + 2, x - 6, y + halfH + 8, x + 6, y + halfH + 8);
+    focus.fillTriangle(x, y + halfH + 14, x - 6, y + halfH + 8, x + 6, y + halfH + 8);
   }
 
   private advanceConversation(): void {
+    this.shopAudio?.playSfx('dialogue');
     this.dialogueIndex += 1;
     if (this.dialogueIndex < this.dialogueBeats.length) {
       this.showDialogueBeat();
@@ -913,12 +948,14 @@ export class ShopIntroductionScene extends Phaser.Scene {
       Phaser.Input.Keyboard.JustDown(this.rightKey)
     ) {
       this.selectedChoice = this.selectedChoice === 0 ? 1 : 0;
+      this.shopAudio?.playSfx('choice-move');
       this.updateChoiceAppearance();
       return;
     }
     if (!confirmPressed) {
       return;
     }
+    this.shopAudio?.playSfx('choice-confirm');
     if (jobChoice) {
       this.confirmJobChoice();
     } else {
@@ -960,58 +997,27 @@ export class ShopIntroductionScene extends Phaser.Scene {
     if (!this.interior || this.tallyVisual) {
       return;
     }
-    const tally = this.add.graphics();
-    tally.fillStyle(0xa17f55, 1);
-    tally.fillRoundedRect(-24, -11, 48, 22, 3);
-    tally.fillStyle(0x3b3025, 1);
-    tally.fillTriangle(17, -11, 25, -11, 25, -3);
-    tally.lineStyle(2, 0xd0b27d, 0.9);
-    tally.strokeRoundedRect(-24, -11, 48, 22, 3);
-    tally.lineBetween(-5, -6, 5, 6);
-    tally.lineBetween(5, -6, -5, 6);
+    const tally = this.add
+      .image(0, 0, SHOP_INTERIOR_TEXTURES.brassTally)
+      .setDisplaySize(72, 75)
+      .setRotation(-0.24);
     this.tallyVisual = this.add
-      .container(this.interior.artifactX - 55, this.interior.artifactY, [tally])
+      .container(this.interior.artifactX - 92, this.interior.artifactY + 4, [tally])
       .setDepth(5);
+    this.shopAudio?.playSfx('place-tally');
   }
 
   private createToolsVisual(): void {
     if (!this.interior || this.toolsVisual) {
       return;
     }
-    const g = this.add.graphics();
-    g.fillStyle(0x776b54, 1);
-    g.fillRoundedRect(-104, -17, 50, 35, 8);
-    g.lineStyle(2, 0xc6a878, 0.9);
-    g.strokeRoundedRect(-104, -17, 50, 35, 8);
-    g.lineBetween(-93, -18, -87, -29);
-    g.lineBetween(-65, -18, -71, -29);
-    g.fillStyle(0x62675a, 1);
-    g.fillRect(-41, -15, 16, 30);
-    g.fillStyle(0xd8b96c, 0.92);
-    g.fillCircle(-33, -17, 6);
-    g.lineStyle(3, 0xb99d6e, 1);
-    g.strokeCircle(-4, 0, 13);
-    g.lineStyle(4, 0x987c58, 1);
-    g.lineBetween(19, 11, 41, -12);
-    g.lineStyle(2, 0xa6987d, 0.9);
-    g.lineBetween(43, -12, 57, 4);
-    g.fillStyle(0x687065, 1);
-    g.fillRoundedRect(51, 3, 12, 20, 5);
-    g.fillRoundedRect(65, 0, 12, 20, 5);
-    g.lineStyle(1, 0xb3b9a5, 0.88);
-    g.lineBetween(54, 7, 54, -4);
-    g.lineBetween(58, 6, 58, -6);
-    g.lineBetween(68, 4, 68, -7);
-    g.lineBetween(72, 4, 72, -6);
-    g.fillStyle(0xd0bc91, 1);
-    g.fillRect(88, -21, 82, 42);
-    g.lineStyle(1, 0x887151, 0.9);
-    g.lineBetween(96, 10, 116, -9);
-    g.lineBetween(116, -9, 140, 7);
-    g.lineBetween(140, 7, 161, -12);
+    const tools = this.add
+      .image(0, 0, SHOP_INTERIOR_TEXTURES.commissionTools)
+      .setDisplaySize(235, 177);
     this.toolsVisual = this.add
-      .container(this.interior.artifactX - 15, this.interior.artifactY, [g])
+      .container(this.interior.artifactX + 30, this.interior.artifactY - 8, [tools])
       .setDepth(5);
+    this.shopAudio?.playSfx('place-tools');
   }
 
   private beginDeparture(): void {
@@ -1021,6 +1027,8 @@ export class ShopIntroductionScene extends Phaser.Scene {
     this.choicePanel?.setVisible(false);
     this.dialogueFocusOverlay?.setVisible(false);
     this.dialogueSpeakerFocus?.setVisible(false);
+    this.shopAudio?.playSfx('transition');
+    this.shopAudio?.stopVoice();
     this.transitionTimer = this.time.delayedCall(250, () => {
       this.cameras.main.fadeOut(650, 12, 12, 10);
       this.transitionTimer = this.time.delayedCall(700, () => {
@@ -1038,5 +1046,8 @@ export class ShopIntroductionScene extends Phaser.Scene {
     this.enterKey = undefined;
     this.leftKey = undefined;
     this.rightKey = undefined;
+    this.escapeKey = undefined;
+    this.shopAudio?.destroy();
+    this.shopAudio = undefined;
   }
 }

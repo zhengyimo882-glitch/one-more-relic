@@ -26,6 +26,7 @@ export class DirectionalLampSystem {
   private readonly toggleKey: Phaser.Input.Keyboard.Key;
   private readonly occluders: readonly LampOccluderRect[];
   private angle = -Math.PI / 2;
+  private aimAngle = -Math.PI / 2;
   private brightness = 1;
   private targetBrightness = 1;
   private flickerRemaining = 0;
@@ -62,7 +63,11 @@ export class DirectionalLampSystem {
       .setVisible(this.debugVisible);
   }
 
-  update(playerX: number, playerY: number, deltaSeconds: number): boolean {
+  update(
+    playerX: number,
+    playerY: number,
+    deltaSeconds: number,
+  ): boolean {
     let toggled = false;
     if (Phaser.Input.Keyboard.JustDown(this.toggleKey)) {
       this.targetBrightness = this.targetBrightness > 0 ? 0 : 1;
@@ -116,6 +121,10 @@ export class DirectionalLampSystem {
 
   getAngleRadians(): number {
     return this.angle;
+  }
+
+  getAimAngleRadians(): number {
+    return this.aimAngle;
   }
 
   getDebugInfo(): DirectionalLampDebugInfo {
@@ -221,11 +230,12 @@ export class DirectionalLampSystem {
       pointerWorld.x,
       pointerWorld.y,
     );
-    this.angle = Phaser.Math.Angle.RotateTo(
-      this.angle,
+    this.aimAngle = Phaser.Math.Angle.RotateTo(
+      this.aimAngle,
       targetAngle,
       TOMB_FEEL.lamp.directionSmoothingRadiansPerSecond * deltaSeconds,
     );
+    this.angle = this.aimAngle;
   }
 
   private updateBrightness(deltaSeconds: number): void {

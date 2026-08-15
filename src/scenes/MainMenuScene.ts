@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
-
-const BUTTON_COLORS = {
-  normal: 0x596052,
-  hover: 0x737b69,
-  pressed: 0x3f453b,
-};
+import {
+  createStyleBoardButtonBackground,
+  drawStyleBoardButton,
+  styleBoardButtonTextColor,
+  UI_STYLE_BOARD,
+  type StyleBoardButtonState,
+} from '../ui/styleBoardUi';
 
 const SERIF_FONT =
   'Georgia, "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif';
@@ -23,7 +24,7 @@ export class MainMenuScene extends Phaser.Scene {
 
     const { width, height } = this.scale;
 
-    this.cameras.main.setBackgroundColor('#181b17');
+    this.cameras.main.setBackgroundColor('#090b09');
 
     const titleGroup = this.add.container(width / 2, height / 2 - 120).setAlpha(0);
 
@@ -32,7 +33,7 @@ export class MainMenuScene extends Phaser.Scene {
         fontFamily: SERIF_FONT,
         fontSize: '76px',
         fontStyle: 'bold',
-        color: '#e8e0cf',
+        color: UI_STYLE_BOARD.colors.textBright,
         letterSpacing: 5,
       })
       .setOrigin(0.5);
@@ -41,7 +42,7 @@ export class MainMenuScene extends Phaser.Scene {
       .text(0, 72, '见好不收', {
         fontFamily: SERIF_FONT,
         fontSize: '30px',
-        color: '#b2bba1',
+        color: UI_STYLE_BOARD.colors.text,
       })
       .setOrigin(0.5);
 
@@ -75,38 +76,22 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   private createStartButton(x: number, y: number): void {
-    const buttonWidth = 220;
-    const buttonHeight = 74;
-    const background = this.add.graphics();
-
-    const drawButton = (color: number): void => {
-      background.clear();
-      background.fillStyle(color, 1);
-      background.fillRoundedRect(
-        -buttonWidth / 2,
-        -buttonHeight / 2,
-        buttonWidth,
-        buttonHeight,
-        3,
-      );
-      background.lineStyle(2, 0xa89b7f, 0.75);
-      background.strokeRoundedRect(
-        -buttonWidth / 2,
-        -buttonHeight / 2,
-        buttonWidth,
-        buttonHeight,
-        3,
-      );
-    };
-
-    drawButton(BUTTON_COLORS.normal);
+    const buttonWidth = 240;
+    const buttonHeight = 64;
+    const background = createStyleBoardButtonBackground(
+      this,
+      buttonWidth,
+      buttonHeight,
+      'default',
+      'primary',
+    );
 
     const label = this.add
       .text(0, 0, 'START\n开始游戏', {
         fontFamily: SANS_FONT,
-        fontSize: '22px',
+        fontSize: '19px',
         fontStyle: 'bold',
-        color: '#f0e8d7',
+        color: styleBoardButtonTextColor('default'),
         align: 'center',
         lineSpacing: 2,
       })
@@ -117,21 +102,26 @@ export class MainMenuScene extends Phaser.Scene {
       .setSize(buttonWidth, buttonHeight)
       .setInteractive({ useHandCursor: true });
 
+    const setState = (state: StyleBoardButtonState): void => {
+      drawStyleBoardButton(background, buttonWidth, buttonHeight, state, 'primary');
+      label.setColor(styleBoardButtonTextColor(state));
+    };
+
     button.on('pointerover', () => {
       if (!this.isStarting) {
-        drawButton(BUTTON_COLORS.hover);
+        setState('hover');
       }
     });
 
     button.on('pointerout', () => {
       if (!this.isStarting) {
-        drawButton(BUTTON_COLORS.normal);
+        setState('default');
       }
     });
 
     button.on('pointerdown', () => {
       if (!this.isStarting) {
-        drawButton(BUTTON_COLORS.pressed);
+        setState('pressed');
       }
     });
 

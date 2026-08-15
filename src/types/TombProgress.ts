@@ -4,7 +4,8 @@ export type TutorialTombPhase =
   | 'coffin-opened'
   | 'objective-complete'
   | 'departure-confirmation'
-  | 'completed';
+  | 'completed'
+  | 'transition-to-shop';
 
 export type DepartureChoice =
   | 'empty'

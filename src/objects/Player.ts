@@ -10,7 +10,16 @@ import {
 } from '../visuals/createPlayerAvatarVisual';
 import { TOMB_FEEL } from '../config/tombFeelConfig';
 
-export type PlayerDirection = 'up' | 'down' | 'left' | 'right';
+export type PlayerDirection =
+  | 'north'
+  | 'north-east'
+  | 'east'
+  | 'south-east'
+  | 'south'
+  | 'south-west'
+  | 'west'
+  | 'north-west';
+export type PlayerLocomotion = 'forward' | 'backward';
 export type PlayerMovementMode = 'cartesian' | 'isometric';
 
 type MovementKeys = {
@@ -30,7 +39,9 @@ export class Player extends Phaser.GameObjects.Container {
   };
   private readonly avatarVisual: PlayerAvatarVisual;
   private readonly movementMode: PlayerMovementMode;
-  private facing: PlayerDirection = 'up';
+  private facing: PlayerDirection = 'north';
+  private visualFacing: PlayerDirection = 'north';
+  private aimControlled = false;
   private movementEnabled = true;
   private readonly smoothedVelocity = new Phaser.Math.Vector2();
   private lastUpdateTime = 0;
@@ -127,6 +138,10 @@ export class Player extends Phaser.GameObjects.Container {
         this.smoothedVelocity.setLength(remainingSpeed);
       }
       physicsBody.setVelocity(this.smoothedVelocity.x, this.smoothedVelocity.y);
+      if (this.aimControlled) {
+        this.visualFacing = this.facing;
+        this.avatarVisual.setFacing(this.visualFacing);
+      }
       this.avatarVisual.setMovement(false, this.scene.time.now);
       return;
     }
@@ -139,13 +154,21 @@ export class Player extends Phaser.GameObjects.Container {
     }
     this.smoothedVelocity.add(deltaVelocity);
     physicsBody.setVelocity(this.smoothedVelocity.x, this.smoothedVelocity.y);
-    this.avatarVisual.setMovement(true, this.scene.time.now);
-
-    const nextFacing = this.getFacingFromInput(horizontal, vertical);
-    if (nextFacing !== this.facing) {
-      this.facing = nextFacing;
-      this.avatarVisual.setFacing(this.facing);
+    const movementDirection = this.directionFromVector(desiredVelocity.x, desiredVelocity.y);
+    if (!this.aimControlled) {
+      this.facing = movementDirection;
     }
+    const movementVector = desiredVelocity.clone().normalize();
+    const aimVector = this.directionVector(this.facing);
+    const locomotion: PlayerLocomotion = movementVector.dot(aimVector) < -0.35
+      ? 'backward'
+      : 'forward';
+    const nextVisualFacing = locomotion === 'backward' ? this.facing : movementDirection;
+    if (nextVisualFacing !== this.visualFacing) {
+      this.visualFacing = nextVisualFacing;
+      this.avatarVisual.setFacing(this.visualFacing);
+    }
+    this.avatarVisual.setMovement(true, this.scene.time.now, locomotion);
   }
 
   setMovementEnabled(enabled: boolean): void {
@@ -157,13 +180,7 @@ export class Player extends Phaser.GameObjects.Container {
   }
 
   getFacingVector(): Phaser.Math.Vector2 {
-    const vectors: Record<PlayerDirection, Phaser.Math.Vector2> = {
-      up: new Phaser.Math.Vector2(0, -1),
-      down: new Phaser.Math.Vector2(0, 1),
-      left: new Phaser.Math.Vector2(-1, 0),
-      right: new Phaser.Math.Vector2(1, 0),
-    };
-    return vectors[this.facing].clone();
+    return this.directionVector(this.facing);
   }
 
   getFacing(): PlayerDirection {
@@ -175,14 +192,17 @@ export class Player extends Phaser.GameObjects.Container {
   }
 
   setAimAngle(angleRadians: number): void {
-    const horizontal = Math.cos(angleRadians);
-    const vertical = Math.sin(angleRadians);
-    const nextFacing: PlayerDirection = Math.abs(horizontal) > Math.abs(vertical)
-      ? horizontal >= 0 ? 'right' : 'left'
-      : vertical >= 0 ? 'down' : 'up';
+    this.aimControlled = true;
+    const nextFacing = this.directionFromVector(
+      Math.cos(angleRadians),
+      Math.sin(angleRadians),
+    );
     if (nextFacing !== this.facing) {
       this.facing = nextFacing;
-      this.avatarVisual.setFacing(nextFacing);
+      if (this.smoothedVelocity.lengthSq() < 4) {
+        this.visualFacing = nextFacing;
+        this.avatarVisual.setFacing(nextFacing);
+      }
     }
   }
 
@@ -209,21 +229,38 @@ export class Player extends Phaser.GameObjects.Container {
     return body ? body.velocity.clone() : new Phaser.Math.Vector2();
   }
 
-  private getFacingFromInput(horizontal: number, vertical: number): PlayerDirection {
-    if (horizontal !== 0 && vertical !== 0) {
-      const horizontalKey = horizontal > 0 ? this.movementKeys.right : this.movementKeys.left;
-      const verticalKey = vertical > 0 ? this.movementKeys.down : this.movementKeys.up;
+  private directionFromVector(x: number, y: number): PlayerDirection {
+    const directions: PlayerDirection[] = [
+      'north',
+      'north-east',
+      'east',
+      'south-east',
+      'south',
+      'south-west',
+      'west',
+      'north-west',
+    ];
+    const angle = Math.atan2(y, x);
+    const index = Phaser.Math.Wrap(
+      Math.round((angle + Math.PI / 2) / (Math.PI / 4)),
+      0,
+      directions.length,
+    );
+    return directions[index];
+  }
 
-      if (horizontalKey.timeDown > verticalKey.timeDown) {
-        return horizontal > 0 ? 'right' : 'left';
-      }
-    }
-
-    if (vertical !== 0) {
-      return vertical > 0 ? 'down' : 'up';
-    }
-
-    return horizontal > 0 ? 'right' : 'left';
+  private directionVector(direction: PlayerDirection): Phaser.Math.Vector2 {
+    const vectors: Record<PlayerDirection, Phaser.Math.Vector2> = {
+      north: new Phaser.Math.Vector2(0, -1),
+      'north-east': new Phaser.Math.Vector2(1, -1).normalize(),
+      east: new Phaser.Math.Vector2(1, 0),
+      'south-east': new Phaser.Math.Vector2(1, 1).normalize(),
+      south: new Phaser.Math.Vector2(0, 1),
+      'south-west': new Phaser.Math.Vector2(-1, 1).normalize(),
+      west: new Phaser.Math.Vector2(-1, 0),
+      'north-west': new Phaser.Math.Vector2(-1, -1).normalize(),
+    };
+    return vectors[direction].clone();
   }
 
   private isDirectionDown(direction: keyof MovementKeys): boolean {

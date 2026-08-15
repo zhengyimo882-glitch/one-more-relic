@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { TOMB_FEEL } from '../config/tombFeelConfig';
+import { createStyleBoardPrompt } from '../ui/styleBoardUi';
 
 export type ArtifactLocationState = 'world' | 'carried';
 export type OmenTier = 0 | 1 | 2;
@@ -50,8 +51,11 @@ export class InvestigableObject {
   hasBeenDisturbed: boolean;
   isAvailable: boolean;
   isBeingInvestigated = false;
+  private taskHighlightEnabled = false;
+  private taskHighlightAlpha = 0.32;
 
   private readonly highlightObject: Phaser.GameObjects.Graphics;
+  private readonly taskMarker: Phaser.GameObjects.Graphics;
   private readonly promptOffsetY: number;
   private readonly promptText: Phaser.GameObjects.Text;
 
@@ -76,32 +80,41 @@ export class InvestigableObject {
     this.isAvailable = config.isAvailable ?? true;
     this.visualObject = config.visualObject;
     this.highlightObject = config.highlightObject;
+    this.taskMarker = scene.add
+      .graphics()
+      .setPosition(config.worldX, config.worldY)
+      .setDepth(7.18)
+      .setVisible(false);
+    this.taskMarker.lineStyle(2, 0xcbbb8c, 0.54);
+    this.taskMarker.strokeCircle(0, -34, 34);
     this.promptOffsetY = config.promptOffsetY;
 
-    const promptBackground = scene.add
-      .rectangle(0, 0, 214, 32, 0x12100d, 0.88)
-      .setStrokeStyle(1, 0x94886d, 0.75);
-    this.promptText = scene.add
-      .text(0, 0, 'E  Investigate / 调查', {
-        fontFamily:
-          'Arial, "Noto Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif',
-        fontSize: '15px',
-        color: '#ded4b7',
-      })
-      .setOrigin(0.5);
-
-    this.promptObject = scene.add
-      .container(config.worldX, config.worldY + config.promptOffsetY, [
-        promptBackground,
-        this.promptText,
-      ])
+    this.promptObject = createStyleBoardPrompt(
+      scene,
+      'E',
+      'Investigate / 调查',
+      224,
+      42,
+    )
+      .setPosition(config.worldX, config.worldY + config.promptOffsetY)
       .setDepth(8)
       .setVisible(false);
+    this.promptText = this.promptObject.getData('label') as Phaser.GameObjects.Text;
     this.highlightObject.setVisible(false);
     scene.tweens.add({
       targets: this.highlightObject,
       alpha: { from: 0.48, to: 1 },
       duration: TOMB_FEEL.interaction.highlightPulseMs,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.InOut',
+    });
+    scene.tweens.add({
+      targets: this.taskMarker,
+      alpha: { from: 0.24, to: 0.58 },
+      scaleX: { from: 0.96, to: 1.06 },
+      scaleY: { from: 0.96, to: 1.06 },
+      duration: 1150,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.InOut',
@@ -115,23 +128,37 @@ export class InvestigableObject {
   setNearby(isNearby: boolean): void {
     const isInWorld = this.isAvailable && this.locationState === 'world';
     this.promptObject.setVisible(isInWorld && isNearby && !this.isBeingInvestigated);
-    this.highlightObject.setVisible(isInWorld && (isNearby || this.isBeingInvestigated));
+    this.highlightObject
+      .setVisible(isInWorld && (isNearby || this.isBeingInvestigated || this.taskHighlightEnabled))
+      .setAlpha(isNearby || this.isBeingInvestigated ? 1 : this.taskHighlightAlpha);
+  }
+
+  setTaskHighlight(enabled: boolean, alpha = 0.32): void {
+    this.taskHighlightEnabled = enabled;
+    this.taskHighlightAlpha = alpha;
+    const isInWorld = this.isAvailable && this.locationState === 'world';
+    this.highlightObject
+      .setVisible(isInWorld && (enabled || this.isBeingInvestigated))
+      .setAlpha(this.isBeingInvestigated ? 1 : alpha);
+    this.taskMarker.setVisible(enabled && isInWorld).setAlpha(alpha);
   }
 
   setPromptText(text: string): void {
-    this.promptText.setText(text);
+    this.promptText.setText(text.replace(/^E\s+/, ''));
   }
 
   beginInvestigation(): void {
     this.isBeingInvestigated = true;
     this.promptObject.setVisible(false);
-    this.highlightObject.setVisible(true);
+    this.highlightObject.setVisible(true).setAlpha(1);
   }
 
   endInvestigation(): void {
     this.isBeingInvestigated = false;
     this.promptObject.setVisible(false);
-    this.highlightObject.setVisible(false);
+    this.highlightObject
+      .setVisible(this.taskHighlightEnabled && this.locationState === 'world')
+      .setAlpha(this.taskHighlightAlpha);
   }
 
   moveToWorldSpot(worldX: number, worldY: number, displaySpotId: string): void {
@@ -141,8 +168,11 @@ export class InvestigableObject {
     this.displaySpotId = displaySpotId;
     this.isAvailable = true;
     this.visualObject.setPosition(worldX, worldY).setVisible(true);
+    this.taskMarker.setPosition(worldX, worldY).setVisible(this.taskHighlightEnabled);
     this.promptObject.setPosition(worldX, worldY + this.promptOffsetY).setVisible(false);
-    this.highlightObject.setVisible(false);
+    this.highlightObject
+      .setVisible(this.taskHighlightEnabled)
+      .setAlpha(this.taskHighlightAlpha);
   }
 
   setCarried(): void {
@@ -152,6 +182,7 @@ export class InvestigableObject {
     this.visualObject.setVisible(false);
     this.promptObject.setVisible(false);
     this.highlightObject.setVisible(false);
+    this.taskMarker.setVisible(false);
   }
 
   setAvailable(available: boolean): void {
@@ -161,6 +192,7 @@ export class InvestigableObject {
     if (!available) {
       this.promptObject.setVisible(false);
       this.highlightObject.setVisible(false);
+      this.taskMarker.setVisible(false);
     }
   }
 }

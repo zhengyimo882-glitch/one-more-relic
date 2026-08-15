@@ -9,8 +9,11 @@ import {
 import {
   ANTIQUE_SHOP_HEIGHT,
   ANTIQUE_SHOP_WIDTH,
+  SHOP_LAYOUT,
   antiqueShopDepthFromGround,
   createAntiqueShopInterior,
+  preloadAntiqueShopInteriorAssets,
+  SHOP_INTERIOR_TEXTURES,
   type AntiqueShopInterior,
 } from './shared/createAntiqueShopInterior';
 import {
@@ -28,12 +31,22 @@ import {
   createParchmentPanel,
   preloadParchmentPanel,
 } from '../visuals/createParchmentPanel';
+import { ShopAudioSystem } from '../systems/ShopAudioSystem';
+import type { TombSettlement } from '../systems/ShopProgressSystem';
+import { isPauseButtonPressed, openPauseMenu } from './PauseMenuScene';
+import { createTimedLocationTitle } from '../ui/createTimedLocationTitle';
+import {
+  createStyleBoardPanel,
+  createStyleBoardPrompt,
+  UI_STYLE_BOARD,
+} from '../ui/styleBoardUi';
 
 const SERIF_FONT = VISUAL_THEME.fonts.serif;
 const SANS_FONT = VISUAL_THEME.fonts.sans;
 
 export interface AntiqueShopSceneData {
   departureChoice: DepartureChoice;
+  settlement?: TombSettlement;
   appearanceId?: PlayerAppearanceId;
 }
 
@@ -181,6 +194,7 @@ const REACTION_DATA: Record<DepartureChoice, ReactionData> = {
 
 export class AntiqueShopScene extends Phaser.Scene {
   private incomingDepartureChoice: DepartureChoice = 'empty';
+  private incomingSettlement?: TombSettlement;
   private incomingAppearanceId: PlayerAppearanceId =
     DEFAULT_PLAYER_APPEARANCE_ID;
   private departureChoice: DepartureChoice = 'empty';
@@ -202,6 +216,7 @@ export class AntiqueShopScene extends Phaser.Scene {
   private arrivalTimer?: Phaser.Time.TimerEvent;
   private locationTween?: Phaser.Tweens.Tween;
   private atmosphere?: ProceduralAtmosphere;
+  private shopAudio?: ShopAudioSystem;
 
   private interactionKey?: Phaser.Input.Keyboard.Key;
   private enterKey?: Phaser.Input.Keyboard.Key;
@@ -253,12 +268,14 @@ export class AntiqueShopScene extends Phaser.Scene {
     preloadPlayerAvatarAssets(this);
     preloadShopkeeperAssets(this);
     preloadParchmentPanel(this);
+    preloadAntiqueShopInteriorAssets(this);
   }
 
   init(data?: Partial<AntiqueShopSceneData>): void {
     this.incomingDepartureChoice = this.isDepartureChoice(data?.departureChoice)
       ? data.departureChoice
       : 'empty';
+    this.incomingSettlement = data?.settlement;
     this.incomingAppearanceId = isPlayerAppearanceId(data?.appearanceId)
       ? data.appearanceId
       : DEFAULT_PLAYER_APPEARANCE_ID;
@@ -266,6 +283,7 @@ export class AntiqueShopScene extends Phaser.Scene {
 
   create(): void {
     this.resetAntiqueShopState();
+    this.shopAudio = new ShopAudioSystem();
     this.cameras.main.setBackgroundColor('#17130f');
     this.physics.world.setBounds(
       0,
@@ -288,8 +306,8 @@ export class AntiqueShopScene extends Phaser.Scene {
     this.createCounterInteraction();
     this.player = new Player(
       this,
-      ANTIQUE_SHOP_WIDTH / 2,
-      620,
+      SHOP_LAYOUT.playerSpawn.x,
+      SHOP_LAYOUT.playerSpawn.y,
       this.appearanceId,
     );
     this.player.setDepth(antiqueShopDepthFromGround(this.player.y + 28));
@@ -322,13 +340,19 @@ export class AntiqueShopScene extends Phaser.Scene {
     );
     const enterPressed = Phaser.Input.Keyboard.JustDown(this.enterKey);
     const escapePressed = Phaser.Input.Keyboard.JustDown(this.escapeKey);
+    const pausePressed = escapePressed || isPauseButtonPressed(this);
     const leftPressed = Phaser.Input.Keyboard.JustDown(this.leftChoiceKey);
     const rightPressed = Phaser.Input.Keyboard.JustDown(this.rightChoiceKey);
     this.atmosphere?.update(this.player.x, this.player.y, this.time.now);
 
+    if (pausePressed && this.phase !== 'resolved') {
+      openPauseMenu(this);
+      return;
+    }
+
     if (this.phase === 'resolved') {
       if (interactionPressed || enterPressed) {
-        this.scene.start('MainMenuScene');
+        this.continueFromReturnResult();
       }
       return;
     }
@@ -336,17 +360,20 @@ export class AntiqueShopScene extends Phaser.Scene {
     if (this.phase === 'response-choice' || this.phase === 'sale-choice') {
       if (leftPressed) {
         this.choiceIndex = 0;
+        this.shopAudio?.playSfx('choice-move');
         this.updateChoiceHighlight();
         return;
       }
 
       if (rightPressed) {
         this.choiceIndex = 1;
+        this.shopAudio?.playSfx('choice-move');
         this.updateChoiceHighlight();
         return;
       }
 
       if (interactionPressed) {
+        this.shopAudio?.playSfx('choice-confirm');
         if (this.phase === 'response-choice') {
           this.confirmShopkeeperResponse();
         } else {
@@ -358,6 +385,7 @@ export class AntiqueShopScene extends Phaser.Scene {
 
     if (this.phase === 'conversation') {
       if (interactionPressed) {
+        this.shopAudio?.playSfx('dialogue');
         this.showNextConversationBeat();
       }
       return;
@@ -368,18 +396,10 @@ export class AntiqueShopScene extends Phaser.Scene {
     this.turnShopkeeperTowardPlayer();
 
     if (this.phase === 'arriving') {
-      if (escapePressed) {
-        this.scene.start('MainMenuScene');
-      }
       return;
     }
 
     this.updateNearestInteraction();
-
-    if (escapePressed) {
-      this.scene.start('MainMenuScene');
-      return;
-    }
 
     if (interactionPressed && this.shopkeeperNearby) {
       this.beginShopkeeperConversation();
@@ -405,21 +425,10 @@ export class AntiqueShopScene extends Phaser.Scene {
   }
 
   private createCounterInteraction(): void {
-    const background = this.add
-      .rectangle(0, 0, 172, 32, 0x15110e, 0.92)
-      .setStrokeStyle(1, 0xa58e68, 0.78);
-    const label = this.add
-      .text(0, 0, 'E  Speak / 交谈', {
-        fontFamily: SANS_FONT,
-        fontSize: '15px',
-        color: '#ded4b7',
-      })
-      .setOrigin(0.5);
-    this.worldPrompt = this.add
-      .container(
+    this.worldPrompt = createStyleBoardPrompt(this, 'E', 'Speak / 交谈', 184, 42)
+      .setPosition(
         this.shopInterior?.promptX ?? 810,
         this.shopInterior?.promptY ?? 318,
-        [background, label],
       )
       .setDepth(6)
       .setVisible(false);
@@ -435,41 +444,20 @@ export class AntiqueShopScene extends Phaser.Scene {
   }
 
   private createLocationUI(): void {
-    const background = this.add
-      .rectangle(0, 0, 430, 96, 0x15120f, 0.84)
-      .setStrokeStyle(1, 0x8d7858, 0.65);
-    const english = this.add
-      .text(0, -17, 'ANTIQUE SHOP', {
-        fontFamily: SERIF_FONT,
-        fontSize: '30px',
-        fontStyle: 'bold',
-        color: '#e6dcc4',
-        letterSpacing: 2,
-      })
-      .setOrigin(0.5);
-    const chinese = this.add
-      .text(0, 22, '古玩店', {
-        fontFamily: SERIF_FONT,
-        fontSize: '19px',
-        color: '#bbb3a1',
-      })
-      .setOrigin(0.5);
-    this.locationUI = this.add
-      .container(640, 88, [background, english, chinese])
-      .setScrollFactor(0)
-      .setDepth(12);
+    this.locationUI = createTimedLocationTitle(this, {
+      english: 'ANTIQUE SHOP',
+      chinese: '古玩店',
+    }).container;
   }
 
   private createObjectiveUI(): void {
-    const background = this.add
-      .rectangle(0, 0, 310, 112, 0x1b1814, 0.92)
-      .setStrokeStyle(1, 0xb09a75, 0.86);
+    const background = createStyleBoardPanel(this, 310, 112, 'thin', 0.94);
     const englishTitle = this.add
       .text(-137, -42, 'OBJECTIVE', {
         fontFamily: SANS_FONT,
         fontSize: '13px',
         fontStyle: 'bold',
-        color: '#b29f79',
+        color: UI_STYLE_BOARD.colors.muted,
         letterSpacing: 1,
       })
       .setOrigin(0, 0.5);
@@ -477,21 +465,21 @@ export class AntiqueShopScene extends Phaser.Scene {
       .text(-137, -23, '当前目标', {
         fontFamily: SANS_FONT,
         fontSize: '12px',
-        color: '#aaa18f',
+        color: UI_STYLE_BOARD.colors.muted,
       })
       .setOrigin(0, 0.5);
     const english = this.add
       .text(-137, 0, 'Speak with the shopkeeper.', {
         fontFamily: SANS_FONT,
         fontSize: '16px',
-        color: '#e1d7bc',
+        color: UI_STYLE_BOARD.colors.textBright,
       })
       .setOrigin(0, 0);
     const chinese = this.add
       .text(-137, 28, '与古玩店老板交谈。', {
         fontFamily: SANS_FONT,
         fontSize: '14px',
-        color: '#bbb3a1',
+        color: UI_STYLE_BOARD.colors.text,
       })
       .setOrigin(0, 0);
     this.objectiveUI = this.add
@@ -517,7 +505,7 @@ export class AntiqueShopScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(10);
     this.escapeHint = this.add
-      .text(28, 678, 'ESC  Menu / 返回', {
+      .text(28, 678, 'ESC  Pause / 暂停', {
         fontFamily: SANS_FONT,
         fontSize: '14px',
         color: '#969e92',
@@ -824,7 +812,9 @@ export class AntiqueShopScene extends Phaser.Scene {
   }
 
   private showArrivalLocation(): void {
-    this.arrivalTimer = this.time.delayedCall(1500, () => {
+    this.locationUI?.setVisible(true).setAlpha(0);
+    this.tweens.add({ targets: this.locationUI, alpha: 1, duration: 400 });
+    this.arrivalTimer = this.time.delayedCall(2600, () => {
       if (this.phase !== 'arriving') {
         return;
       }
@@ -832,7 +822,7 @@ export class AntiqueShopScene extends Phaser.Scene {
       this.locationTween = this.tweens.add({
         targets: this.locationUI,
         alpha: 0,
-        duration: 450,
+        duration: 650,
         onComplete: () => this.locationUI?.setVisible(false),
       });
     });
@@ -877,6 +867,7 @@ export class AntiqueShopScene extends Phaser.Scene {
     this.objectiveUI?.setVisible(false);
     this.controlHint?.setVisible(false);
     this.escapeHint?.setVisible(false);
+    this.shopAudio?.playSfx('interact');
     this.createCounterArtifact();
     this.conversationBeats = this.buildConversationForDeparture();
     this.conversationIndex = 0;
@@ -891,6 +882,40 @@ export class AntiqueShopScene extends Phaser.Scene {
       this.shopkeeperBeat(reaction.reaction, reaction.chineseReaction),
       this.shopkeeperBeat(reaction.quote, reaction.chineseQuote),
     ];
+
+    if (this.incomingSettlement?.hasAtlas) {
+      beats.push(
+        {
+          voice: 'player',
+          englishTitle: 'YOU',
+          chineseTitle: '你',
+          englishText: '“There was a cellar below the coffin room. I found this chart inside.”',
+          chineseText: '“棺室下面还有一层地窖。我在里面找到了这张图。”',
+        },
+        this.shopkeeperBeat(
+          '“Put it on the counter. Do not unfold it toward the door.”',
+          '“放到柜台上。别让展开的那一面对着门。”',
+        ),
+        {
+          voice: 'appraisal',
+          englishTitle: 'THE MYRIAD CHARACTER ATLAS',
+          chineseTitle: '《万字藏图》',
+          englishText: 'The shopkeeper recognizes the seals before the cloth is fully opened. His hand stops above the first route line.',
+          chineseText: '包布尚未完全揭开，老板已经认出了纸上的印记。他的手停在第一道路线前，没有再碰下去。',
+        },
+        this.shopkeeperBeat(
+          '“This is not a burial object. It is a route index—and this tomb was only its first mark.”',
+          '“这不是陪葬品，是一册路线索引。你刚去的那座墓，只是它标出的第一处。”',
+        ),
+        {
+          voice: 'thought',
+          englishTitle: 'INNER THOUGHT',
+          chineseTitle: '内心',
+          englishText: 'He knew what it was before I said its name.',
+          chineseText: '我还没说出名字，他就已经知道那是什么。',
+        },
+      );
+    }
 
     if (this.departureChoice !== 'empty') {
       const artifact = ARTIFACT_DATA[this.departureChoice];
@@ -980,6 +1005,13 @@ export class AntiqueShopScene extends Phaser.Scene {
     this.conversationChineseText
       .setText(beat.chineseText)
       .setColor(isThought ? '#3b4d48' : '#24140b');
+    if (beat.voice === 'shopkeeper' || beat.voice === 'offer') {
+      this.shopAudio?.speakEnglish(beat.englishText, 'shopkeeper');
+    } else if (beat.voice === 'player') {
+      this.shopAudio?.speakEnglish(beat.englishText, 'player');
+    } else {
+      this.shopAudio?.stopVoice();
+    }
   }
 
   private openResponseChoice(): void {
@@ -1100,6 +1132,7 @@ export class AntiqueShopScene extends Phaser.Scene {
     const sold = this.choiceIndex === 0;
     this.outcome = this.determineShopOutcome(this.departureChoice, sold);
     this.choicePanel?.setVisible(false);
+    this.shopAudio?.playSfx('place-relic');
     this.animateCounterArtifact(sold);
     this.showShopResult();
   }
@@ -1198,38 +1231,28 @@ export class AntiqueShopScene extends Phaser.Scene {
     if (this.departureChoice === 'empty' || this.counterArtifact) {
       return;
     }
-    const shadow = this.add.ellipse(0, 11, 62, 22, 0x080706, 0.4);
-    const artifact = this.add.graphics();
-    if (this.departureChoice === 'burial-vessel') {
-      artifact.fillStyle(0x82745b, 1);
-      artifact.fillEllipse(0, 2, 46, 50);
-      artifact.fillRect(-13, -24, 26, 13);
-      artifact.lineStyle(2, 0xb3a27c, 0.7);
-      artifact.strokeEllipse(0, 2, 46, 50);
-    } else if (this.departureChoice === 'bronze-mirror') {
-      artifact.fillStyle(0x42514c, 1);
-      artifact.fillCircle(0, -4, 25);
-      artifact.lineStyle(4, 0x819188, 0.82);
-      artifact.strokeCircle(0, -4, 25);
-      artifact.fillStyle(0x647168, 1);
-      artifact.fillRoundedRect(-7, 20, 14, 24, 4);
+    const textureKey = this.departureChoice === 'burial-vessel'
+      ? SHOP_INTERIOR_TEXTURES.burialVessel
+      : this.departureChoice === 'bronze-mirror'
+        ? SHOP_INTERIOR_TEXTURES.bronzeMirror
+        : SHOP_INTERIOR_TEXTURES.geomancersCompass;
+    const artifact = this.add.image(0, 0, textureKey).setOrigin(0.5, 1);
+    if (this.departureChoice === 'geomancers-compass') {
+      artifact.setDisplaySize(92, 80);
     } else {
-      artifact.fillStyle(0x9b906e, 1);
-      artifact.fillCircle(0, 0, 27);
-      artifact.lineStyle(2, 0xd0c39b, 0.85);
-      artifact.strokeCircle(0, 0, 27);
-      artifact.lineBetween(-20, 0, 20, 0);
-      artifact.lineBetween(0, -20, 0, 20);
-      artifact.fillStyle(0x526158, 1);
-      artifact.fillTriangle(0, -18, -5, 8, 6, 5);
+      artifact.setDisplaySize(
+        this.departureChoice === 'burial-vessel' ? 58 : 63,
+        86,
+      );
     }
     this.counterArtifact = this.add
       .container(
         this.shopInterior?.artifactX ?? 720,
         this.shopInterior?.artifactY ?? 237,
-        [shadow, artifact],
+        [artifact],
       )
       .setDepth(4);
+    this.shopAudio?.playSfx('place-relic');
   }
 
   private animateCounterArtifact(sold: boolean): void {
@@ -1250,7 +1273,20 @@ export class AntiqueShopScene extends Phaser.Scene {
     this.arrivalTimer?.remove(false);
     this.counterArtifactTween?.stop();
     this.locationTween?.stop();
-    this.player?.setMovementEnabled(false);
+    this.shopAudio?.destroy();
+    this.shopAudio = undefined;
+  }
+
+  private continueFromReturnResult(): void {
+    this.shopAudio?.playSfx('transition');
+    if (this.incomingSettlement) {
+      this.scene.start('ShopGrowthScene', {
+        settlement: this.incomingSettlement,
+        appearanceId: this.appearanceId,
+      });
+      return;
+    }
+    this.scene.start('MainMenuScene');
   }
 
   private isDepartureChoice(

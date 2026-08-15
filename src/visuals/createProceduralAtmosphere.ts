@@ -304,9 +304,9 @@ function createVignette(scene: Phaser.Scene): Phaser.GameObjects.Graphics {
     .setScrollFactor(0)
     .setDepth(VISUAL_THEME.depth.vignette);
   const bands = [
-    { inset: 0, alpha: 0.18, size: 34 },
-    { inset: 28, alpha: 0.09, size: 28 },
-    { inset: 52, alpha: 0.045, size: 22 },
+    { inset: 0, alpha: 0.13, size: 30 },
+    { inset: 28, alpha: 0.065, size: 24 },
+    { inset: 52, alpha: 0.03, size: 18 },
   ];
   bands.forEach(({ inset, alpha, size }) => {
     graphics.fillStyle(VISUAL_THEME.colors.inkBlack, alpha);

@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { DEFAULT_PLAYER_APPEARANCE_ID } from '../data/playerAppearances';
+import { isPauseButtonPressed, openPauseMenu } from './PauseMenuScene';
 
 const SERIF_FONT =
   'Georgia, "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif';
@@ -75,7 +76,8 @@ export class StoryIntroScene extends Phaser.Scene {
       Phaser.Input.Keyboard.JustDown(this.continueKey) ||
       Phaser.Input.Keyboard.JustDown(this.enterKey);
     const skipPressed = Phaser.Input.Keyboard.JustDown(this.skipKey);
-    const escapePressed = Phaser.Input.Keyboard.JustDown(this.escapeKey);
+    const escapePressed =
+      Phaser.Input.Keyboard.JustDown(this.escapeKey) || isPauseButtonPressed(this);
 
     if (continuePressed) {
       this.advanceAct();
@@ -86,7 +88,7 @@ export class StoryIntroScene extends Phaser.Scene {
       return;
     }
     if (escapePressed) {
-      this.scene.start('MainMenuScene');
+      openPauseMenu(this);
     }
   }
 
@@ -135,7 +137,7 @@ export class StoryIntroScene extends Phaser.Scene {
       )
       .setOrigin(0.5);
     this.add
-      .text(28, 678, 'ESC  RETURN TO MENU / 返回主菜单', {
+      .text(28, 678, 'ESC  PAUSE / 暂停', {
         fontFamily: SANS_FONT,
         fontSize: '14px',
         color: '#979f93',
