@@ -9,7 +9,7 @@ const PLAYER_TEXTURE_PATH = 'assets/generated/tomb_vertical_slice/player_explore
 const PLAYER_FRAME_SIZE = 256;
 const SHEET_COLUMNS = 4;
 
-type PlayerAction = 'pickup' | 'place';
+type PlayerAction = 'pickup' | 'place' | 'light-candle';
 type PlayerVisualState =
   | 'idle'
   | 'walk-forward'
@@ -148,14 +148,28 @@ export function createPlayerAvatarVisual(
     playAction(action: PlayerAction): void {
       actionActive = true;
       scene.tweens.killTweensOf(sprite);
-      const duration = action === 'pickup'
-        ? TOMB_FEEL.player.pickupFeedbackMs
-        : TOMB_FEEL.player.placeFeedbackMs;
+      const duration = action === 'light-candle'
+        ? 620
+        : action === 'pickup'
+          ? TOMB_FEEL.player.pickupFeedbackMs
+          : TOMB_FEEL.player.placeFeedbackMs;
+      const targetY = action === 'light-candle' ? 5 : action === 'pickup' ? -3 : 2;
+      const targetScaleX = action === 'light-candle'
+        ? 1.018
+        : action === 'pickup'
+          ? 1.025
+          : 0.985;
+      const targetScaleY = action === 'light-candle'
+        ? 0.975
+        : action === 'pickup'
+          ? 0.985
+          : 1.02;
       scene.tweens.add({
         targets: sprite,
-        y: action === 'pickup' ? -3 : 2,
-        scaleX: TOMB_FEEL.player.spriteScale * (action === 'pickup' ? 1.025 : 0.985),
-        scaleY: TOMB_FEEL.player.spriteScale * (action === 'pickup' ? 0.985 : 1.02),
+        y: targetY,
+        rotation: action === 'light-candle' ? 0.018 : 0,
+        scaleX: TOMB_FEEL.player.spriteScale * targetScaleX,
+        scaleY: TOMB_FEEL.player.spriteScale * targetScaleY,
         alpha: action === 'pickup' ? 1 : 0.94,
         duration: duration / 2,
         yoyo: true,

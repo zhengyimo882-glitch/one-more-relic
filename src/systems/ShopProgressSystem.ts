@@ -8,6 +8,10 @@ export type TombLootRecord = {
   evidenceIds: string[];
   cleaningProgress: number;
   cleaningDamage: number;
+  cleaningMaskPoints?: Array<{ x: number; y: number; radius: number }>;
+  cleaningToolUse?: Partial<Record<'soft-brush' | 'bamboo-pick' | 'dry-cloth', number>>;
+  destroyedEvidenceIds?: string[];
+  preservationScore?: number;
   cleaned: boolean;
   appraised: boolean;
   appraisalCorrect?: boolean;
@@ -202,6 +206,10 @@ export const ShopProgressSystem = {
       evidenceIds: [],
       cleaningProgress: 0,
       cleaningDamage: 0,
+      cleaningMaskPoints: [],
+      cleaningToolUse: {},
+      destroyedEvidenceIds: [],
+      preservationScore: 100,
       cleaned: false,
       appraised: false,
       placed: false,

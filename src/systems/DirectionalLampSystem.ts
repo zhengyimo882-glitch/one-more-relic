@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { TOMB_FEEL } from '../config/tombFeelConfig';
+import type { TombPointLight } from '../types/TombLighting';
 
 export type LampOccluderRect = Readonly<{
   x: number;
@@ -22,6 +23,7 @@ export class DirectionalLampSystem {
   private readonly darkness: Phaser.GameObjects.RenderTexture;
   private readonly visibilityBrush: Phaser.GameObjects.Graphics;
   private readonly light: Phaser.GameObjects.Graphics;
+  private readonly pointLightGlow: Phaser.GameObjects.Graphics;
   private readonly debugGraphics: Phaser.GameObjects.Graphics;
   private readonly toggleKey: Phaser.Input.Keyboard.Key;
   private readonly occluders: readonly LampOccluderRect[];
@@ -36,6 +38,7 @@ export class DirectionalLampSystem {
   private lastPlayerY = 0;
   private lastLightX = 0;
   private lastLightY = 0;
+  private latestPointLights: readonly TombPointLight[] = [];
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -57,6 +60,10 @@ export class DirectionalLampSystem {
       .graphics()
       .setDepth(7)
       .setBlendMode(Phaser.BlendModes.ADD);
+    this.pointLightGlow = scene.add
+      .graphics()
+      .setDepth(7.08)
+      .setBlendMode(Phaser.BlendModes.ADD);
     this.debugGraphics = scene.add
       .graphics()
       .setDepth(78)
@@ -67,6 +74,7 @@ export class DirectionalLampSystem {
     playerX: number,
     playerY: number,
     deltaSeconds: number,
+    pointLights: readonly TombPointLight[] = [],
   ): boolean {
     let toggled = false;
     if (Phaser.Input.Keyboard.JustDown(this.toggleKey)) {
@@ -76,6 +84,7 @@ export class DirectionalLampSystem {
 
     this.lastPlayerX = playerX;
     this.lastPlayerY = playerY;
+    this.latestPointLights = pointLights;
     this.updateDirection(playerX, playerY, deltaSeconds);
     this.lastLightX =
       playerX +
@@ -105,8 +114,10 @@ export class DirectionalLampSystem {
       this.lastLightX,
       this.lastLightY,
       visibleBrightness,
+      pointLights,
     );
     this.redrawLight(this.lastLightX, this.lastLightY, visibleBrightness);
+    this.redrawPointLights(pointLights);
     this.redrawDebug();
     return toggled;
   }
@@ -147,6 +158,12 @@ export class DirectionalLampSystem {
       worldY,
     );
     if (playerDistance <= TOMB_FEEL.interaction.safetyRevealRadius) {
+      return true;
+    }
+    if (this.latestPointLights.some((light) => {
+      const distance = Phaser.Math.Distance.Between(light.x, light.y, worldX, worldY);
+      return light.intensity >= 0.12 && distance <= light.radius * 0.78;
+    })) {
       return true;
     }
     if (!this.isOn() || this.brightness < 0.12) {
@@ -213,6 +230,7 @@ export class DirectionalLampSystem {
     this.darkness.destroy();
     this.visibilityBrush.destroy();
     this.light.destroy();
+    this.pointLightGlow.destroy();
     this.debugGraphics.destroy();
   }
 
@@ -259,6 +277,7 @@ export class DirectionalLampSystem {
     lightX: number,
     lightY: number,
     visibleBrightness: number,
+    pointLights: readonly TombPointLight[],
   ): void {
     const camera = this.scene.cameras.main;
     const screenX = (playerX - camera.scrollX) * camera.zoom + camera.x;
@@ -270,24 +289,20 @@ export class DirectionalLampSystem {
     this.darkness.fill(0x000000, outsideAlpha);
 
     this.eraseSafetyLight(screenX, screenY);
+    this.erasePointLights(pointLights);
     if (visibleBrightness <= 0.01) {
       return;
     }
 
-    const featherLayers = [
-      { ratio: 1, alpha: 0.16 },
-      { ratio: 0.66, alpha: 0.23 },
-      { ratio: 0.33, alpha: 0.34 },
-      { ratio: 0, alpha: 0.74 },
-    ] as const;
-    for (const layer of featherLayers) {
+    const layerCount = 14;
+    for (let index = 0; index < layerCount; index += 1) {
+      const ratio = 1 - index / (layerCount - 1);
+      const alpha = Phaser.Math.Linear(0.018, 0.19, 1 - ratio);
       const worldPolygon = this.createVisibilityPolygon(
         lightX,
         lightY,
-        TOMB_FEEL.lamp.coneHalfAngle +
-          TOMB_FEEL.lamp.edgeFeatherWidthRadians * layer.ratio,
-        TOMB_FEEL.lamp.effectiveDistance +
-          TOMB_FEEL.lamp.edgeFeatherDistance * layer.ratio,
+        TOMB_FEEL.lamp.coneHalfAngle + TOMB_FEEL.lamp.edgeFeatherWidthRadians * ratio,
+        TOMB_FEEL.lamp.effectiveDistance + TOMB_FEEL.lamp.edgeFeatherDistance * ratio,
       );
       const screenPolygon = worldPolygon.map(
         (point) =>
@@ -299,10 +314,30 @@ export class DirectionalLampSystem {
       this.visibilityBrush.clear();
       this.visibilityBrush.fillStyle(
         0xffffff,
-        layer.alpha * visibleBrightness,
+        alpha * visibleBrightness,
       );
       this.visibilityBrush.fillPoints(screenPolygon, true);
       this.darkness.erase(this.visibilityBrush);
+    }
+  }
+
+  private erasePointLights(pointLights: readonly TombPointLight[]): void {
+    const camera = this.scene.cameras.main;
+    for (const light of pointLights) {
+      const intensity = Phaser.Math.Clamp(light.intensity, 0, 1);
+      if (intensity <= 0.005) continue;
+      const screenX = (light.x - camera.scrollX) * camera.zoom + camera.x;
+      const screenY = (light.y - camera.scrollY) * camera.zoom + camera.y;
+      for (let index = 0; index < 10; index += 1) {
+        const ratio = 1 - index / 10;
+        this.visibilityBrush.clear();
+        this.visibilityBrush.fillStyle(
+          0xffffff,
+          intensity * Phaser.Math.Linear(0.018, 0.14, 1 - ratio),
+        );
+        this.visibilityBrush.fillCircle(screenX, screenY, light.radius * ratio);
+        this.darkness.erase(this.visibilityBrush);
+      }
     }
   }
 
@@ -340,24 +375,39 @@ export class DirectionalLampSystem {
     }
     const centerStrength =
       TOMB_FEEL.lamp.centerBrightness * visibleBrightness;
-    const outerPolygon = this.createVisibilityPolygon(
-      lightX,
-      lightY,
-      TOMB_FEEL.lamp.coneHalfAngle,
-      TOMB_FEEL.lamp.effectiveDistance,
-    );
-    const centerPolygon = this.createVisibilityPolygon(
-      lightX,
-      lightY,
-      TOMB_FEEL.lamp.coneHalfAngle * 0.62,
-      TOMB_FEEL.lamp.effectiveDistance * 0.86,
-    );
-    this.light.fillStyle(0xd8a15f, 0.12 * centerStrength);
-    this.light.fillPoints(outerPolygon, true);
-    this.light.fillStyle(0xffd99b, 0.2 * centerStrength);
-    this.light.fillPoints(centerPolygon, true);
-    this.light.fillStyle(0xffe4b4, 0.1 * centerStrength);
+    const layerCount = 11;
+    for (let index = 0; index < layerCount; index += 1) {
+      const ratio = 1 - index / (layerCount - 1);
+      const polygon = this.createVisibilityPolygon(
+        lightX,
+        lightY,
+        TOMB_FEEL.lamp.coneHalfAngle * Phaser.Math.Linear(1.18, 0.5, 1 - ratio),
+        TOMB_FEEL.lamp.effectiveDistance * Phaser.Math.Linear(1.04, 0.72, 1 - ratio),
+      );
+      const color = index < 4 ? 0xd8a15f : index < 8 ? 0xffc879 : 0xffe1ad;
+      this.light.fillStyle(color, centerStrength * Phaser.Math.Linear(0.012, 0.04, 1 - ratio));
+      this.light.fillPoints(polygon, true);
+    }
+    this.light.fillStyle(0xffe4b4, 0.08 * centerStrength);
     this.light.fillCircle(lightX, lightY, 34);
+  }
+
+  private redrawPointLights(pointLights: readonly TombPointLight[]): void {
+    this.pointLightGlow.clear();
+    for (const light of pointLights) {
+      const intensity = Phaser.Math.Clamp(light.intensity, 0, 1);
+      if (intensity <= 0.005) continue;
+      for (let index = 0; index < 9; index += 1) {
+        const ratio = 1 - index / 9;
+        this.pointLightGlow.fillStyle(
+          light.color,
+          intensity * Phaser.Math.Linear(0.006, 0.034, 1 - ratio),
+        );
+        this.pointLightGlow.fillCircle(light.x, light.y, light.radius * ratio);
+      }
+      this.pointLightGlow.fillStyle(light.color, intensity * 0.12);
+      this.pointLightGlow.fillCircle(light.x, light.y, 13);
+    }
   }
 
   private createVisibilityPolygon(

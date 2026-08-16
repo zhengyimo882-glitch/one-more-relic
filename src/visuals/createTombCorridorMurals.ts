@@ -31,7 +31,7 @@ export type TombCorridorMuralPanel = {
 type MuralPanel = {
   sampleX: number;
   sampleY: number;
-  art: Phaser.GameObjects.Image;
+  marker: Phaser.GameObjects.Container;
   level: number;
   definition: TombCorridorMuralPanel;
 };
@@ -41,27 +41,27 @@ export function createTombCorridorMurals(
 ): TombCorridorMurals {
   const panels = [
     createMuralPanel(scene, {
-      id: 'soul-guide', englishName: 'The Soul Guide', chineseName: '引魂入墓',
-      description: 'A robed guide leads a pale procession toward a moon gate. Every face has been scraped away except the guide\'s.',
-      chineseDescription: '披袍的引魂人领着苍白队伍走向月门。除引魂人以外，所有人的面孔都被刮去了。',
+      id: 'soul-guide', englishName: 'The Array', chineseName: '建阵',
+      description: 'The geomancer measures two burial mounds while attendants draw a vast network of cinnabar lines. Every route converges on the sealed chamber.',
+      chineseDescription: '风水师站在阵心校准方位。\n众人用朱砂线，将两座墓冢连成一体。',
       worldX: 638, worldY: 1160, textureKey: CORRIDOR_MURAL_TEXTURES.leftUpper,
     }, 664, 1160),
     createMuralPanel(scene, {
-      id: 'tomb-guardian', englishName: 'The Tomb Guardian', chineseName: '镇墓守门',
-      description: 'A guardian pins a spirit beast beneath one foot. Its painted eyes point toward the sealed red gate.',
-      chineseDescription: '镇墓将军脚踏异兽，画中双眼却斜斜望向墓道尽头的朱漆封门。',
+      id: 'tomb-guardian', englishName: 'The Awakening', chineseName: '复苏',
+      description: 'A crowned figure rises beyond the broken array. Water runs backward through the mountains as discarded seals tumble toward the viewer.',
+      chineseDescription: '阵法崩裂后，冠冕人影\n从山河尽头苏醒。\n逆流与坠落的印块，\n正朝画外涌来。',
       worldX: 962, worldY: 1160, textureKey: CORRIDOR_MURAL_TEXTURES.rightUpper,
     }, 936, 1160),
     createMuralPanel(scene, {
-      id: 'crane-crossing', englishName: 'The Crossing of Cranes', chineseName: '鹤渡冥河',
-      description: 'Cranes cross a black river while lotus lamps drift against the current. One lamp has been painted over in fresh cinnabar.',
-      chineseDescription: '群鹤飞越黑色冥河，莲灯却逆流而上。其中一盏灯被人用新鲜朱砂重新涂过。',
+      id: 'crane-crossing', englishName: 'The Alliance', chineseName: '结盟',
+      description: 'The geomancer presents a compass to the ruler above the clouds. A matching instrument rests in the ruler\'s hand, binding the two sides to the same design.',
+      chineseDescription: '风水师向云上的王者献出罗盘。\n对方手中，也握着一枚相同的器物。',
       worldX: 638, worldY: 1400, textureKey: CORRIDOR_MURAL_TEXTURES.leftLower,
     }, 664, 1400),
     createMuralPanel(scene, {
-      id: 'underworld-court', englishName: 'The Silent Court', chineseName: '无字阴司',
-      description: 'An underworld court waits behind an empty judgement table. The place where a verdict should be written is blank.',
-      chineseDescription: '阴司众人围着一张空判桌静候。原本应写下判词的位置，只剩一块不自然的空白。',
+      id: 'underworld-court', englishName: 'The Oath', chineseName: '立誓',
+      description: 'Before a celestial throne, the geomancer raises one hand over a compass. Mountain routes and celestial marks spread outward from the ritual table.',
+      chineseDescription: '风水师在云端王座前举手立誓。\n罗盘、山脉与星位，从祭桌向外铺开。',
       worldX: 962, worldY: 1400, textureKey: CORRIDOR_MURAL_TEXTURES.rightLower,
     }, 936, 1400),
   ];
@@ -74,12 +74,12 @@ export function createTombCorridorMurals(
           ? Phaser.Math.Clamp(0.38 + lampBrightness * 0.62, 0, 1)
           : 0.018;
         panel.level = Phaser.Math.Linear(panel.level, target, visible ? 0.22 : 0.12);
-        panel.art.setAlpha(panel.level);
+        panel.marker.setAlpha(panel.level);
       }
     },
     getRevealLevels: () => panels.map((panel) => panel.level),
     getPanels: () => panels.map((panel) => panel.definition),
-    destroy: () => panels.forEach((panel) => panel.art.destroy()),
+    destroy: () => panels.forEach((panel) => panel.marker.destroy(true)),
   };
 }
 
@@ -89,10 +89,40 @@ function createMuralPanel(
   sampleX: number,
   sampleY: number,
 ): MuralPanel {
-  const art = scene.add
-    .image(definition.worldX, definition.worldY, definition.textureKey)
-    .setDisplaySize(92, 218)
-    .setDepth(1.52)
-    .setAlpha(0.018);
-  return { sampleX, sampleY, art, level: 0.018, definition };
+  const plate = scene.add.graphics();
+  plate.fillStyle(0x090907, 0.42);
+  plate.fillRoundedRect(-39, -57, 78, 114, 5);
+  plate.fillStyle(0x26231d, 0.96);
+  plate.fillRoundedRect(-34, -52, 68, 104, 4);
+  plate.lineStyle(2, 0x8f6d3f, 0.74);
+  plate.strokeRoundedRect(-34, -52, 68, 104, 4);
+  plate.lineStyle(1, 0x4c4130, 0.9);
+  plate.strokeRect(-28, -46, 56, 92);
+  plate.lineBetween(-21, -20, 21, -20);
+  plate.lineBetween(-21, 17, 21, 17);
+  plate.lineStyle(2, 0x9f7b46, 0.78);
+  plate.lineBetween(0, -14, 12, -2);
+  plate.lineBetween(12, -2, 0, 10);
+  plate.lineBetween(0, 10, -12, -2);
+  plate.lineBetween(-12, -2, 0, -14);
+  plate.fillStyle(0xb38b4f, 0.78);
+  plate.fillCircle(0, -2, 4);
+  plate.lineStyle(1, 0x6d5a3c, 0.7);
+  plate.lineBetween(-27, -43, -16, -32);
+  plate.lineBetween(27, 43, 16, 32);
+
+  const keyTile = scene.add.rectangle(0, 31, 28, 20, 0x11100d, 0.96)
+    .setStrokeStyle(1, 0xb08a51, 0.92);
+  const keyLabel = scene.add.text(0, 31, 'E', {
+    fontFamily: 'Arial, "Microsoft YaHei", sans-serif',
+    fontSize: '13px',
+    fontStyle: 'bold',
+    color: '#d7c39d',
+  }).setOrigin(0.5);
+  const marker = scene.add.container(definition.worldX, definition.worldY, [
+    plate,
+    keyTile,
+    keyLabel,
+  ]).setDepth(1.52).setAlpha(0.018);
+  return { sampleX, sampleY, marker, level: 0.018, definition };
 }

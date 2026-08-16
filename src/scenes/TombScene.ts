@@ -36,15 +36,18 @@ import {
   type TombEncounterTransition,
 } from '../systems/TombEncounterSystem';
 import { WallShadowSystem } from '../systems/WallShadowSystem';
+import { TombDynamicShadowSystem } from '../systems/TombDynamicShadowSystem';
+import type { TombPointLight, TombShadowCaster } from '../types/TombLighting';
 import {
   FootstepRippleSystem,
   type RippleAllowedArea,
 } from '../systems/FootstepRippleSystem';
 import { preloadPlayerAvatarAssets } from '../visuals/createPlayerAvatarVisual';
 import {
-  createParchmentPanel,
-  preloadParchmentPanel,
-} from '../visuals/createParchmentPanel';
+  createRitualCandle,
+  RITUAL_CANDLE_TEXTURES,
+  type RitualCandleVisual,
+} from '../visuals/createRitualCandle';
 import { isPauseButtonPressed, openPauseMenu } from './PauseMenuScene';
 import {
   createTimedLocationTitle,
@@ -53,6 +56,7 @@ import {
 import {
   createStyleBoardPanel,
   createStyleBoardPrompt,
+  createStyleBoardKeycap,
   drawStyleBoardPanel,
   UI_STYLE_BOARD,
 } from '../ui/styleBoardUi';
@@ -85,7 +89,7 @@ const ROOM_CENTER_X = WORLD_WIDTH / 2;
 const COFFIN_X = ROOM_CENTER_X;
 const COFFIN_Y = 145;
 const PROP_Y = 514;
-const RIGHT_PROP_X = 1240;
+const RIGHT_PROP_X = 1430;
 const OFFERING_CORRECT_SLOT_ID = 'offering-correct-spot';
 const OFFERING_EMPTY_SLOT_ID = 'offering-empty-spot';
 const OFFERING_CORRECT_X = 684;
@@ -123,6 +127,8 @@ const SANS_FONT = VISUAL_THEME.fonts.sans;
 const TOMB_ASSET_ROOT = 'assets/imported/tomb_asset_pack';
 const GENERATED_TOMB_ASSET_ROOT = 'assets/generated/tomb_vertical_slice';
 const ORIGINAL_CORRIDOR_ASSET_ROOT = 'assets/generated/tomb_corridor_original';
+const TOMB_RITUAL_ART_ROOT = 'assets/generated/tomb_ritual_v2';
+const TOMB_MURAL_ART_ROOT = 'assets/tomb_murals';
 const ORIGINAL_ARTIFACT_ASSET_ROOT = 'assets/generated/tomb_artifacts_original';
 const ORIGINAL_ARTIFACT_TEXTURES = {
   burialVessel: 'original-burial-vessel',
@@ -174,11 +180,14 @@ const DECORATIVE_TEXTURE_FRAMES: TombTextureFrame[] = [
   { name: 'urn-green', x: 144, y: 176, width: 16, height: 16 },
 ];
 
-const BURIAL_CHAMBER: TombRect = { x: 610, y: 20, width: 380, height: 300 };
+// Every secondary room has exactly 1.5x its former floor area. The expansion
+// runs away from the unchanged central chamber so every existing doorway and
+// route remains stable.
+const BURIAL_CHAMBER: TombRect = { x: 515, y: 20, width: 570, height: 300 };
 const CENTRAL_CHAMBER: TombRect = { x: 520, y: 350, width: 560, height: 280 };
-const WEST_CHAMBER: TombRect = { x: 190, y: 410, width: 330, height: 210 };
-const EAST_CHAMBER: TombRect = { x: 1080, y: 410, width: 330, height: 210 };
-const SOUTH_CHAMBER: TombRect = { x: 640, y: 620, width: 320, height: 180 };
+const WEST_CHAMBER: TombRect = { x: 25, y: 410, width: 495, height: 210 };
+const EAST_CHAMBER: TombRect = { x: 1080, y: 410, width: 495, height: 210 };
+const SOUTH_CHAMBER: TombRect = { x: 560, y: 620, width: 480, height: 180 };
 
 type TombRoomId =
   | 'burial-chamber'
@@ -196,8 +205,15 @@ type RoomExplorationPoint = {
   worldX: number;
   worldY: number;
   interactionRadius: number;
-  marker: Phaser.GameObjects.Graphics;
+  candle: RitualCandleVisual;
   promptObject: Phaser.GameObjects.Container;
+};
+
+type RoomRevealVeil = {
+  roomId: TombRoomId;
+  bounds: TombRect;
+  graphics: Phaser.GameObjects.Graphics;
+  revealed: boolean;
 };
 
 interface TombSceneData {
@@ -229,12 +245,12 @@ const ARTIFACT_DEFINITIONS: Record<PortableArtifactId, PortableArtifactDefinitio
     englishName: 'Burial Vessel',
     chineseName: '随葬器皿',
     description: 'Old dust covers the vessel. Something has disturbed the floor beside it.',
-    chineseDescription: '陈年灰尘覆盖着器皿，旁边的地面却像被什么扰动过。',
+    chineseDescription: '器皿上积着厚灰，旁边却有一道刚被蹭出的痕迹。',
     hiddenValue: 420,
     appraisalText:
       'The clay body appears old, but the painted surface may have been restored. Its worth is difficult to judge underground.',
     chineseAppraisalText:
-      '陶胎看起来年代久远，但彩绘表面可能经过修复。在墓中很难判断它的价值。',
+      '陶胎看着很老，表面的彩绘却像是后来补过的。只在墓里看，很难判断它到底值不值钱。',
     omenTier: 0,
     originalSpotId: OFFERING_CORRECT_SLOT_ID,
   },
@@ -245,12 +261,12 @@ const ARTIFACT_DEFINITIONS: Record<PortableArtifactId, PortableArtifactDefinitio
     description:
       'Its surface is dark with age. From this angle, it reflects no recognizable face.',
     chineseDescription:
-      '镜面因年代久远而黯淡。从这个角度看，它映不出任何可以辨认的面孔。',
+      '镜面早已发暗。从这个角度看，里面照不出一张完整的人脸。',
     hiddenValue: 900,
     appraisalText:
       'The inscription may be older than the tomb itself. Corrosion hides whether it is genuine or merely convincing.',
     chineseAppraisalText:
-      '铭文可能比墓葬本身更加古老。锈蚀遮住了它究竟是真品，还是仅仅足以乱真。',
+      '背后的铭文可能比这座墓还早。锈蚀太重，现在还分不清是真品，还是做得足够像的仿品。',
     omenTier: 1,
     originalSpotId: 'right-display-spot',
   },
@@ -261,12 +277,12 @@ const ARTIFACT_DEFINITIONS: Record<PortableArtifactId, PortableArtifactDefinitio
     description:
       'A compact compass rests beneath the displaced lid. Its markings do not match the orientation of the tomb.',
     chineseDescription:
-      '一枚小巧的罗盘放在移开的棺盖下。它的刻度与墓室的朝向并不一致。',
+      '棺盖移开后，一枚巴掌大的罗盘露了出来。盘上的刻度，与墓室的朝向对不上。',
     hiddenValue: 1800,
     appraisalText:
       'The needle still turns without being touched. If the maker’s seal is genuine, this may be the most important object in the room.',
     chineseAppraisalText:
-      '指针在无人触碰时仍会转动。如果制作者的印记为真，它或许是这间墓室里最重要的器物。',
+      '没有人碰它，指针却还在缓慢转动。如果底部的制作者印记是真的，它可能是这里最重要的东西。',
     omenTier: 2,
     originalSpotId: 'coffin-interior',
   },
@@ -276,11 +292,11 @@ const ARTIFACT_DEFINITIONS: Record<PortableArtifactId, PortableArtifactDefinitio
     chineseName: '万字藏图',
     description:
       'The folded chart is dry despite the wet cellar. Its ink shifts whenever the lantern moves away.',
-    chineseDescription: '地窖如此潮湿，藏图却完全干燥。灯光移开时，墨迹似乎会自行改变。',
+    chineseDescription: '地窖湿得滴水，这本册子却干得反常。灯光一移开，纸上的墨痕似乎就在缓缓错位。',
     hiddenValue: 0,
     appraisalText:
       'This is not ordinary loot. Its seals and routes connect the geomancer’s compass to places beyond this tomb.',
-    chineseAppraisalText: '这不是普通战利品。图中的印记与路线，将风水罗盘指向了墓穴之外。',
+    chineseAppraisalText: '这不是普通的陪葬品。纸上的印记和路线，正把风水罗盘指向这座墓之外。',
     omenTier: 2,
     originalSpotId: 'hidden-cellar-pedestal',
   },
@@ -390,6 +406,7 @@ export class TombScene extends Phaser.Scene {
   private delayedFootsteps?: DelayedFootstepSystem;
   private proceduralAudio?: ProceduralTombAudioSystem;
   private wallShadow?: WallShadowSystem;
+  private dynamicShadowSystem?: TombDynamicShadowSystem;
   private footstepRipples?: FootstepRippleSystem;
   private tutorialPhase: TutorialTombPhase = 'entering';
   private compassHasBeenRetrieved = false;
@@ -416,7 +433,9 @@ export class TombScene extends Phaser.Scene {
   private muralDiscoveryEnglishBody?: Phaser.GameObjects.Text;
   private muralDiscoveryChineseBody?: Phaser.GameObjects.Text;
   private muralDiscoveryActive = false;
-  private tombMapVeil?: Phaser.GameObjects.Rectangle;
+  private tombMapVeil?: Phaser.GameObjects.Graphics;
+  private roomRevealVeils: RoomRevealVeil[] = [];
+  private revealedRoomIds = new Set<TombRoomId>();
   private tombMapRevealed = false;
   private entranceCrossed = false;
   private exitPrompt?: Phaser.GameObjects.Container;
@@ -469,6 +488,7 @@ export class TombScene extends Phaser.Scene {
     'sealed' | 'remembering' | 'released' | 'provoked'
   >();
   private investigationPanel?: Phaser.GameObjects.Container;
+  private investigationCloseHint?: Phaser.GameObjects.Text;
   private panelEnglishName?: Phaser.GameObjects.Text;
   private panelChineseName?: Phaser.GameObjects.Text;
   private panelDescription?: Phaser.GameObjects.Text;
@@ -509,6 +529,20 @@ export class TombScene extends Phaser.Scene {
   private atmosphere?: ProceduralAtmosphere;
   private previousCanvasImageRendering = '';
   private animatedFlames: Phaser.GameObjects.Sprite[] = [];
+  private staticTombLights: Array<{
+    sprite: Phaser.GameObjects.Sprite;
+    radius: number;
+    intensity: number;
+    color: number;
+    offsetY: number;
+  }> = [];
+  private candleLightingActive = false;
+  private candleLightingProgress = 0;
+  private candleIgnitionLight?: TombPointLight;
+  private candleSkillUI?: Phaser.GameObjects.Container;
+  private candleSkillBackground?: Phaser.GameObjects.Graphics;
+  private candleSkillState?: Phaser.GameObjects.Text;
+  private candleSkillProgressBar?: Phaser.GameObjects.Graphics;
   private encounterTimers: Phaser.Time.TimerEvent[] = [];
   private flameTimers: Phaser.Time.TimerEvent[] = [];
   private lampHintText?: Phaser.GameObjects.Text;
@@ -533,7 +567,6 @@ export class TombScene extends Phaser.Scene {
 
   preload(): void {
     preloadPlayerAvatarAssets(this);
-    preloadParchmentPanel(this);
     this.load.image(
       REFINED_TOMB_TEXTURE,
       `${REFINED_TOMB_ART_ROOT}/tomb_refined_fullmap.png`,
@@ -554,31 +587,47 @@ export class TombScene extends Phaser.Scene {
     this.load.image('tomb-decorative-sheet', `${TOMB_ASSET_ROOT}/decorative.png`);
     this.load.image(
       CEREMONIAL_GATE_TEXTURES.closed,
-      `${ORIGINAL_CORRIDOR_ASSET_ROOT}/gate_closed.png`,
+      `${TOMB_RITUAL_ART_ROOT}/tomb_gate_closed.png`,
     );
     this.load.image(
       CEREMONIAL_GATE_TEXTURES.open,
-      `${ORIGINAL_CORRIDOR_ASSET_ROOT}/gate_open.png`,
+      `${TOMB_RITUAL_ART_ROOT}/tomb_gate_open.png`,
     );
     this.load.image(
       CEREMONIAL_GATE_TEXTURES.ghostFire,
       `${ORIGINAL_CORRIDOR_ASSET_ROOT}/ghost_fire.png`,
     );
     this.load.image(
+      RITUAL_CANDLE_TEXTURES.unlit,
+      `${TOMB_RITUAL_ART_ROOT}/ritual_candle_unlit.png`,
+    );
+    this.load.image(
+      RITUAL_CANDLE_TEXTURES.litA,
+      `${TOMB_RITUAL_ART_ROOT}/ritual_candle_lit_a.png`,
+    );
+    this.load.image(
+      RITUAL_CANDLE_TEXTURES.litB,
+      `${TOMB_RITUAL_ART_ROOT}/ritual_candle_lit_b.png`,
+    );
+    this.load.image(
+      RITUAL_CANDLE_TEXTURES.litC,
+      `${TOMB_RITUAL_ART_ROOT}/ritual_candle_lit_c.png`,
+    );
+    this.load.image(
       CORRIDOR_MURAL_TEXTURES.leftUpper,
-      `${ORIGINAL_CORRIDOR_ASSET_ROOT}/mural_left_upper.png`,
+      `${TOMB_MURAL_ART_ROOT}/mural_array.jpg`,
     );
     this.load.image(
       CORRIDOR_MURAL_TEXTURES.leftLower,
-      `${ORIGINAL_CORRIDOR_ASSET_ROOT}/mural_left_lower.png`,
+      `${TOMB_MURAL_ART_ROOT}/mural_alliance.jpg`,
     );
     this.load.image(
       CORRIDOR_MURAL_TEXTURES.rightUpper,
-      `${ORIGINAL_CORRIDOR_ASSET_ROOT}/mural_right_upper.png`,
+      `${TOMB_MURAL_ART_ROOT}/mural_awakening.jpg`,
     );
     this.load.image(
       CORRIDOR_MURAL_TEXTURES.rightLower,
-      `${ORIGINAL_CORRIDOR_ASSET_ROOT}/mural_right_lower.png`,
+      `${TOMB_MURAL_ART_ROOT}/mural_oath.jpg`,
     );
     this.load.image(
       ORIGINAL_ARTIFACT_TEXTURES.burialVessel,
@@ -632,6 +681,9 @@ export class TombScene extends Phaser.Scene {
     ];
 
     for (const textureKey of textureKeys) {
+      this.textures.get(textureKey).setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+    for (const textureKey of Object.values(RITUAL_CANDLE_TEXTURES)) {
       this.textures.get(textureKey).setFilter(Phaser.Textures.FilterMode.NEAREST);
     }
     this.textures
@@ -730,7 +782,9 @@ export class TombScene extends Phaser.Scene {
       this,
       this.getTombWallSegments(),
     );
+    this.dynamicShadowSystem = new TombDynamicShadowSystem(this);
     this.createTombMapVeil();
+    this.createRoomRevealVeils();
     this.wallShadow = new WallShadowSystem(this, 846, 806);
     this.footstepRipples = new FootstepRippleSystem(
       this,
@@ -777,10 +831,14 @@ export class TombScene extends Phaser.Scene {
     const backpackSlotTwoPressed = Phaser.Input.Keyboard.JustDown(this.backpackSlotTwoKey);
     this.atmosphere?.update(this.player.x, this.player.y, time);
     const deltaSeconds = delta / 1000;
+    this.roomExplorationPoints.forEach((point) => point.candle.update(time));
+    this.updateCorridorEntrance(time);
+    const pointLights = this.getActivePointLights(time);
     const lampToggled = this.directionalLamp?.update(
       this.player.x,
       this.player.y,
       deltaSeconds,
+      pointLights,
     ) ?? false;
     if (lampToggled) {
       this.proceduralAudio?.ensureStarted();
@@ -791,7 +849,7 @@ export class TombScene extends Phaser.Scene {
     }
     const lampAimAngle = this.directionalLamp?.getAimAngleRadians() ?? -Math.PI / 2;
     this.player.setAimAngle(lampAimAngle);
-    this.updateCorridorEntrance(time);
+    this.updateDynamicShadows(pointLights);
     this.wallShadow?.setLightOn(this.directionalLamp?.isOn() ?? true);
     const apparitionPosition = this.wallShadow?.getWorldPosition();
     this.wallShadow?.update(
@@ -834,6 +892,13 @@ export class TombScene extends Phaser.Scene {
     }
 
     if (this.cellarTransitionActive) {
+      return;
+    }
+
+    if (this.candleLightingActive) {
+      if (pausePressed) {
+        openPauseMenu(this);
+      }
       return;
     }
 
@@ -929,6 +994,7 @@ export class TombScene extends Phaser.Scene {
     this.player.update();
     this.player.setAimAngle(lampAimAngle);
     this.player.setDepth(PLAYER_DEPTH_BASE + this.player.y / 1000);
+    this.updateRoomRevealState();
     this.encounterSystem.updatePlayerPosition(this.player.x, this.player.y);
     this.updateNearestInteraction();
 
@@ -1012,6 +1078,8 @@ export class TombScene extends Phaser.Scene {
     this.backpackMenuActive = false;
     this.backpackSelectionIndex = 0;
     this.tombMapVeil = undefined;
+    this.roomRevealVeils = [];
+    this.revealedRoomIds.clear();
     this.tombMapRevealed = false;
     this.entranceCrossed = false;
     this.roomExplorationPoints = [];
@@ -1021,6 +1089,15 @@ export class TombScene extends Phaser.Scene {
     this.shopkeeperFadeTween = undefined;
     this.atmosphere = undefined;
     this.animatedFlames = [];
+    this.staticTombLights = [];
+    this.candleLightingActive = false;
+    this.candleLightingProgress = 0;
+    this.candleIgnitionLight = undefined;
+    this.candleSkillUI = undefined;
+    this.candleSkillBackground = undefined;
+    this.candleSkillState = undefined;
+    this.candleSkillProgressBar = undefined;
+    this.dynamicShadowSystem = undefined;
     this.encounterTimers = [];
     this.flameTimers = [];
     this.debugEnabled = false;
@@ -1082,21 +1159,37 @@ export class TombScene extends Phaser.Scene {
   }
 
   private createRoomExplorationPoints(): RoomExplorationPoint[] {
-    const definitions: Array<Omit<RoomExplorationPoint, 'marker' | 'promptObject'>> = [
+    const definitions: Array<Omit<RoomExplorationPoint, 'candle' | 'promptObject'>> = [
       {
         roomId: 'burial-chamber',
         englishName: 'Burial Chamber',
         chineseName: '主墓室',
-        worldX: 914,
-        worldY: 254,
+        worldX: 710,
+        worldY: 284,
+        interactionRadius: 86,
+      },
+      {
+        roomId: 'central-offering-chamber',
+        englishName: 'Offering Chamber',
+        chineseName: '供奉前室',
+        worldX: 800,
+        worldY: 388,
         interactionRadius: 86,
       },
       {
         roomId: 'west-chamber',
         englishName: 'West Chamber',
         chineseName: '西耳室',
-        worldX: 350,
-        worldY: 520,
+        worldX: 273,
+        worldY: 515,
+        interactionRadius: 86,
+      },
+      {
+        roomId: 'east-offering-chamber',
+        englishName: 'East Chamber',
+        chineseName: '东耳室',
+        worldX: 1328,
+        worldY: 515,
         interactionRadius: 86,
       },
       {
@@ -1104,62 +1197,122 @@ export class TombScene extends Phaser.Scene {
         englishName: 'South Chamber',
         chineseName: '南室',
         worldX: 800,
-        worldY: 718,
+        worldY: 710,
         interactionRadius: 86,
       },
     ];
 
-    return definitions
-      .filter((definition) => definition.roomId !== 'burial-chamber')
-      .map((definition) => {
-      const marker = this.add.graphics().setDepth(2.18);
-      this.drawRoomExplorationMarker(marker, definition.worldX, definition.worldY, false);
+    return definitions.map((definition) => {
+      const candle = createRitualCandle(this, definition.worldX, definition.worldY);
       const promptObject = createStyleBoardPrompt(
         this,
         'E',
-        `Inspect ${definition.englishName} / 查看${definition.chineseName}`,
-        276,
-        42,
+        `Light Candle / 点燃${definition.chineseName}定魂烛`,
+        294,
+        44,
       )
-        .setPosition(definition.worldX, definition.worldY - 58)
+        .setPosition(definition.worldX, definition.worldY - 82)
         .setDepth(8)
         .setVisible(false);
-        return { ...definition, marker, promptObject };
-      });
-  }
-
-  private drawRoomExplorationMarker(
-    marker: Phaser.GameObjects.Graphics,
-    x: number,
-    y: number,
-    completed: boolean,
-  ): void {
-    marker.clear();
-    const color = completed ? 0x6f8764 : 0xb6894f;
-    marker.fillStyle(0x17140f, completed ? 0.52 : 0.7);
-    marker.fillCircle(x, y, 18);
-    marker.lineStyle(2, color, completed ? 0.72 : 0.9);
-    marker.strokeCircle(x, y, 18);
-    marker.strokeCircle(x, y, 12);
-    if (completed) {
-      marker.lineBetween(x - 7, y, x - 2, y + 5);
-      marker.lineBetween(x - 2, y + 5, x + 8, y - 7);
-    } else {
-      marker.lineBetween(x - 6, y, x + 6, y);
-      marker.lineBetween(x, y - 6, x, y + 6);
-    }
+      return { ...definition, candle, promptObject };
+    });
   }
 
   private exploreRoom(point: RoomExplorationPoint): void {
-    this.completeRoomExploration(point.roomId);
+    this.lightRoomCandle(point);
   }
 
-  private markOfferingRoomExplored(artifactId: string): void {
-    if (artifactId === 'burial-vessel') {
-      this.completeRoomExploration('central-offering-chamber');
-    } else if (artifactId === 'bronze-mirror') {
-      this.completeRoomExploration('east-offering-chamber');
+  private lightRoomCandle(point: RoomExplorationPoint): void {
+    if (!this.player || this.candleLightingActive || point.candle.isLit()) {
+      return;
     }
+    this.candleLightingActive = true;
+    this.candleLightingProgress = 0;
+    this.player.setMovementEnabled(false);
+    this.player.playCandleLightingAction();
+    this.playCandleIgnitionEffect(point);
+    this.nearbyInteraction = undefined;
+    point.promptObject.setVisible(false);
+    point.candle.setNearby(false);
+    this.updateCandleSkillUI();
+    this.proceduralAudio?.ensureStarted();
+
+    this.time.delayedCall(280, () => {
+      point.candle.ignite();
+      this.cameras.main.shake(70, 0.00045);
+    });
+    this.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: 760,
+      ease: 'Sine.InOut',
+      onUpdate: (tween) => {
+        this.candleLightingProgress = tween.getValue() ?? 0;
+        this.updateCandleSkillUI();
+      },
+      onComplete: () => {
+        this.candleLightingProgress = 1;
+        this.candleLightingActive = false;
+        this.completeRoomExploration(point.roomId);
+        this.player?.setMovementEnabled(true);
+        this.updateCandleSkillUI();
+        this.updateNearestInteraction();
+      },
+    });
+  }
+
+  private playCandleIgnitionEffect(point: RoomExplorationPoint): void {
+    if (!this.player) return;
+    const startX = this.player.x;
+    const startY = this.player.y - 18;
+    const endX = point.worldX;
+    const endY = point.worldY - 40;
+    const trail = this.add.graphics().setDepth(5.82).setBlendMode(Phaser.BlendModes.ADD);
+    const ember = this.add.graphics().setDepth(5.84).setBlendMode(Phaser.BlendModes.ADD);
+    const trailPoints: Array<{ x: number; y: number }> = [];
+
+    const drawEmber = (x: number, y: number, progress: number): void => {
+      ember.clear();
+      ember.fillStyle(0xff8b3e, 0.12);
+      ember.fillCircle(x, y, 18 - progress * 5);
+      ember.fillStyle(0xffc35f, 0.34);
+      ember.fillCircle(x, y, 9 - progress * 2);
+      ember.fillStyle(0xffedb0, 0.96);
+      ember.fillCircle(x, y, 2.4);
+    };
+
+    this.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: 280,
+      ease: 'Sine.InOut',
+      onUpdate: (tween) => {
+        const progress = tween.getValue() ?? 0;
+        const x = Phaser.Math.Linear(startX, endX, progress);
+        const y = Phaser.Math.Linear(startY, endY, progress) - Math.sin(progress * Math.PI) * 18;
+        trailPoints.push({ x, y });
+        if (trailPoints.length > 8) trailPoints.shift();
+        trail.clear();
+        trailPoints.forEach((trailPoint, index) => {
+          const alpha = ((index + 1) / trailPoints.length) * 0.28;
+          trail.fillStyle(0xe29a4b, alpha);
+          trail.fillCircle(trailPoint.x, trailPoint.y, 1.2 + index * 0.12);
+        });
+        drawEmber(x, y, progress);
+        this.candleIgnitionLight = {
+          x,
+          y,
+          radius: 82,
+          intensity: 0.38 + Math.sin(progress * Math.PI) * 0.2,
+          color: 0xffa34f,
+        };
+      },
+      onComplete: () => {
+        this.candleIgnitionLight = undefined;
+        trail.destroy();
+        ember.destroy();
+      },
+    });
   }
 
   private completeRoomExploration(roomId: TombRoomId): void {
@@ -1170,21 +1323,15 @@ export class TombScene extends Phaser.Scene {
     const point = this.roomExplorationPoints.find((candidate) => candidate.roomId === roomId);
     if (point) {
       point.promptObject.setVisible(false);
-      this.drawRoomExplorationMarker(point.marker, point.worldX, point.worldY, true);
-      this.tweens.add({
-        targets: point.marker,
-        alpha: { from: 0.35, to: 1 },
-        duration: 320,
-        ease: 'Sine.Out',
-      });
+      point.candle.setNearby(false);
     }
     this.proceduralAudio?.playCue('correct');
     this.updateRestoreProgressUI();
     const remaining = this.getRemainingRoomCount();
     if (remaining > 0) {
       this.updateObjectiveUI(
-        `Chamber explored. ${remaining} ${remaining === 1 ? 'chamber remains' : 'chambers remain'}.`,
-        `已完成一间墓室的探索，还需探索 ${remaining} 间。`,
+        `Candle lit. ${remaining} ${remaining === 1 ? 'chamber candle remains' : 'chamber candles remain'}.`,
+        `这里的定魂烛已经点亮。还要点燃 ${remaining} 间墓室的蜡烛。`,
       );
     }
     this.nearbyInteraction = undefined;
@@ -1209,27 +1356,27 @@ export class TombScene extends Phaser.Scene {
     const chineseParts: string[] = [];
     if (missingCoreLoot.length > 0) {
       englishParts.push(`recover ${missingCoreLoot.join(' and ')}`);
-      chineseParts.push('取得风水罗盘与《万字藏图》');
+      chineseParts.push('拿到风水罗盘和《万字藏图》');
     }
     if (remainingRooms > 0) {
       englishParts.push(
-        `Explore ${remainingRooms} more ${remainingRooms === 1 ? 'chamber' : 'chambers'}`,
+        `light ${remainingRooms} more chamber ${remainingRooms === 1 ? 'candle' : 'candles'}`,
       );
-      chineseParts.push(`还需探索并交互 ${remainingRooms} 间墓室`);
+      chineseParts.push(`还要点燃 ${remainingRooms} 间墓室的定魂烛`);
     }
     if (unrestoredObjects > 0) {
       englishParts.push(
         `restore ${unrestoredObjects} moved ${unrestoredObjects === 1 ? 'object' : 'objects'}`,
       );
-      chineseParts.push(`还需归位 ${unrestoredObjects} 件被移动的器物`);
+      chineseParts.push(`还要放回 ${unrestoredObjects} 件被移动的器物`);
     }
     this.updateObjectiveUI(
       englishParts.length > 0
         ? `The sealed door will not open: ${englishParts.join(' and ')}.`
         : 'The door mechanism is responding. Step back and try again.',
       chineseParts.length > 0
-        ? `封门尚未开启：${chineseParts.join('，并且')}。`
-        : '封门机关正在响应，请退后再试。',
+        ? `封门还没有打开：${chineseParts.join('；')}。`
+        : '门里的机关动了。退开一点，再试一次。',
     );
     this.proceduralAudio?.playCue('door-reject');
     this.cameras.main.shake(90, 0.0012);
@@ -1252,6 +1399,7 @@ export class TombScene extends Phaser.Scene {
     this.escapeHintText?.setVisible(false);
     this.objectiveUI?.setVisible(false);
     this.carryUI?.setVisible(false);
+    this.candleSkillUI?.setVisible(false);
     this.createArrivalBag();
     this.createArrivalPanel();
     this.showArrivalIntroductionBeat();
@@ -1275,43 +1423,43 @@ export class TombScene extends Phaser.Scene {
   }
 
   private createArrivalPanel(): void {
-    const background = createParchmentPanel(this, 1120, 144);
-    const title = this.add.text(-520, -51, 'ARRIVAL', {
+    const background = createStyleBoardPanel(this, 1120, 180, 'carved', 0.985);
+    const title = this.add.text(-520, -67, 'ARRIVAL', {
       fontFamily: SANS_FONT,
       fontSize: '13px',
       fontStyle: 'bold',
-      color: '#4f2415',
+      color: UI_STYLE_BOARD.colors.textBright,
       letterSpacing: 1,
     });
-    const chineseTitle = this.add.text(-520, -34, '抵达', {
+    const chineseTitle = this.add.text(-520, -49, '抵达', {
       fontFamily: SANS_FONT,
       fontSize: '12px',
-      color: '#332016',
+      color: UI_STYLE_BOARD.colors.muted,
     });
-    this.arrivalEnglishText = this.add.text(-520, -10, '', {
+    this.arrivalEnglishText = this.add.text(-520, -23, '', {
       fontFamily: SERIF_FONT,
       fontSize: '16px',
-      color: '#1e1109',
+      color: UI_STYLE_BOARD.colors.textBright,
       lineSpacing: 2,
       wordWrap: { width: 850 },
     });
-    this.arrivalChineseText = this.add.text(-520, 31, '', {
+    this.arrivalChineseText = this.add.text(-520, 22, '', {
       fontFamily: SERIF_FONT,
       fontSize: '13px',
       fontStyle: 'bold',
-      color: '#24140b',
+      color: UI_STYLE_BOARD.colors.text,
       lineSpacing: 2,
       wordWrap: { width: 820 },
     });
     const continueText = this.add
-      .text(470, 52, 'E / ENTER  CONTINUE / 继续', {
+      .text(500, 69, 'E / ENTER  CONTINUE / 继续', {
         fontFamily: SANS_FONT,
         fontSize: '12px',
-        color: '#2f1d11',
+        color: '#d4ad63',
       })
       .setOrigin(1, 0.5);
     this.arrivalPanel = this.add
-      .container(this.scale.width / 2, 144, [
+      .container(this.scale.width / 2, 154, [
         background,
         title,
         chineseTitle,
@@ -1329,22 +1477,27 @@ export class TombScene extends Phaser.Scene {
         english:
           'The route ended at a sealed burial passage.\nNot a storehouse.',
         chinese:
-          '老板画出的路线，最终通向一条被封住的墓道。\n这里根本不是什么仓房。',
+          '老板给的路线，最后竟通向一条封死的墓道。\n这里根本不是仓房。',
       },
       {
         english: 'Every turn on his hand-drawn route had been correct.',
-        chinese: '但他画出的每一个转弯，都准确无误。',
+        chinese: '可一路上的每一个转弯，都和他画的一模一样。',
       },
       {
         english:
           'He lied about the place.\nHe did not lie about knowing the way.',
         chinese:
-          '他隐瞒了这是什么地方。\n但他确实知道该怎么走。',
+          '他骗了我这里是什么地方，\n却没骗我该怎么走。',
       },
     ];
     const beat = beats[this.arrivalIntroductionIndex];
     this.arrivalEnglishText?.setText(beat.english);
     this.arrivalChineseText?.setText(beat.chinese);
+    if (this.arrivalEnglishText && this.arrivalChineseText) {
+      this.arrivalChineseText.setY(
+        this.arrivalEnglishText.y + this.arrivalEnglishText.displayHeight + 7,
+      );
+    }
   }
 
   private advanceArrivalIntroduction(): void {
@@ -1366,11 +1519,12 @@ export class TombScene extends Phaser.Scene {
     this.activeLocationTitle.play();
     this.updateObjectiveUI(
       'Follow the mural passage. Approach the red gate at its far end.',
-      '沿着壁画墓道前进，靠近尽头的朱漆墓门。',
+      '沿着壁画墓道前进，去看看尽头的朱漆墓门。',
     );
     this.instructionText?.setVisible(true);
     this.escapeHintText?.setVisible(true);
     this.carryUI?.setVisible(true);
+    this.candleSkillUI?.setVisible(true);
     this.locationTitleEnglish?.setVisible(true);
     this.locationTitleChinese?.setVisible(true);
     this.player?.setMovementEnabled(true);
@@ -1385,13 +1539,13 @@ export class TombScene extends Phaser.Scene {
     this.setEntranceCollisionEnabled(true);
     this.ceremonialGate.close(360, () => this.cameras.main.shake(90, 0.001));
     this.updateObjectiveUI(
-      'Explore every burial chamber. Examine offerings where they stand; moved objects must be restored.',
-      '探索全部墓室。有供物的墓室查看供物即可；若移动器物，必须将其归位。',
+      'Light the fixed candle in every burial chamber. Moved objects must still be restored.',
+      '点燃每间墓室固定位置的定魂烛。拿起过的东西，离开前必须放回原处。',
     );
     this.showShopkeeperMessage(
       'sealed',
-      'The entrance is sealed. Search every chamber before you leave. Look before you touch.',
-      '入口已经封上了。离开前要查看每一间墓室。动手之前，先看清楚。',
+      'The entrance is sealed. Light every chamber candle before you leave. Look before you touch.',
+      '“入口封死了。别急着动东西。先点亮每间墓室的定魂烛，再想怎么出去。”',
     );
   }
 
@@ -1402,12 +1556,87 @@ export class TombScene extends Phaser.Scene {
   }
 
   private createTombMapVeil(): void {
-    // This sits above the flashlight's additive cone. Until the threshold is
-    // crossed, the chambers behind the gate remain absolute black rather than
-    // becoming faintly visible through the beam.
-    this.tombMapVeil = this.add
-      .rectangle(800, (ENTRANCE_Y - 44) / 2, 1280, ENTRANCE_Y - 44, 0x000000, 1)
-      .setDepth(7.02);
+    // A long stack of narrow alpha bands replaces the old single hard-edged
+    // black rectangle. The passage now falls gradually into darkness behind
+    // the gate while its blue guide flames remain legible at the threshold.
+    const veil = this.add.graphics().setDepth(7.12);
+    const featherStartY = 680;
+    const featherEndY = ENTRANCE_Y - 12;
+    veil.fillStyle(0x000000, 0.985);
+    veil.fillRect(0, 0, WORLD_WIDTH, featherStartY);
+    const bands = 36;
+    const bandHeight = (featherEndY - featherStartY) / bands;
+    for (let index = 0; index < bands; index += 1) {
+      const progress = index / (bands - 1);
+      const alpha = 0.965 * Math.pow(1 - progress, 1.65);
+      veil.fillStyle(0x000000, alpha);
+      veil.fillRect(
+        0,
+        featherStartY + index * bandHeight,
+        WORLD_WIDTH,
+        bandHeight + 1,
+      );
+    }
+    this.tombMapVeil = veil;
+  }
+
+  private createRoomRevealVeils(): void {
+    const rooms: Array<{ roomId: TombRoomId; bounds: TombRect }> = [
+      { roomId: 'burial-chamber', bounds: BURIAL_CHAMBER },
+      { roomId: 'central-offering-chamber', bounds: CENTRAL_CHAMBER },
+      { roomId: 'west-chamber', bounds: WEST_CHAMBER },
+      { roomId: 'east-offering-chamber', bounds: EAST_CHAMBER },
+      { roomId: 'south-chamber', bounds: SOUTH_CHAMBER },
+    ];
+
+    this.roomRevealVeils = rooms.map(({ roomId, bounds }) => {
+      const graphics = this.add.graphics().setDepth(7.13);
+      const bands = 32;
+      const maximumInset = Math.min(bounds.width, bounds.height) / 2 - 4;
+      for (let index = 0; index < bands; index += 1) {
+        const progress = index / (bands - 1);
+        const inset = maximumInset * progress;
+        graphics.fillStyle(0x000000, 0.025 + progress * 0.03);
+        graphics.fillRoundedRect(
+          bounds.x + inset,
+          bounds.y + inset,
+          Math.max(1, bounds.width - inset * 2),
+          Math.max(1, bounds.height - inset * 2),
+          Math.max(2, 24 - progress * 20),
+        );
+      }
+      return { roomId, bounds, graphics, revealed: false };
+    });
+  }
+
+  private updateRoomRevealState(): void {
+    if (!this.player || this.currentTombMap !== 'main' || !this.tombMapRevealed) {
+      return;
+    }
+    for (const veil of this.roomRevealVeils) {
+      if (veil.revealed) continue;
+      const inset = WALL_THICKNESS + 6;
+      const entered = Phaser.Geom.Rectangle.Contains(
+        new Phaser.Geom.Rectangle(
+          veil.bounds.x + inset,
+          veil.bounds.y + inset,
+          veil.bounds.width - inset * 2,
+          veil.bounds.height - inset * 2,
+        ),
+        this.player.x,
+        this.player.y,
+      );
+      if (!entered) continue;
+      veil.revealed = true;
+      this.revealedRoomIds.add(veil.roomId);
+      this.tweens.add({
+        targets: veil.graphics,
+        alpha: 0,
+        duration: 1150,
+        ease: 'Sine.InOut',
+        onComplete: () => veil.graphics.setVisible(false),
+      });
+    }
   }
 
   private updateCorridorEntrance(time: number): void {
@@ -1465,8 +1694,8 @@ export class TombScene extends Phaser.Scene {
       this.tweens.add({
         targets: veil,
         alpha: 0,
-        duration: 380,
-        ease: 'Sine.Out',
+        duration: 1050,
+        ease: 'Sine.InOut',
         onComplete: () => {
           veil.destroy();
           if (this.tombMapVeil === veil) {
@@ -1476,8 +1705,8 @@ export class TombScene extends Phaser.Scene {
       });
     }
     this.updateObjectiveUI(
-      'Explore every burial chamber. Chambers with offerings are counted when you examine the offering.',
-      '探索全部墓室。有供物的墓室，需要查看供物才算完成探索。',
+      'Light the fixed candle in every burial chamber. Coffins, offerings, and the cellar are separate discoveries.',
+      '点燃每间墓室固定位置的定魂烛；棺材、供物和地窖均为独立发现。',
     );
   }
 
@@ -1508,11 +1737,13 @@ export class TombScene extends Phaser.Scene {
     this.delayedFootsteps?.reset();
     this.footstepRipples?.destroy();
     this.directionalLamp?.destroy();
+    this.dynamicShadowSystem?.destroy();
     this.proceduralAudio?.destroy();
     this.wallShadow?.destroy();
     this.corridorMurals?.destroy();
     this.ceremonialGate?.destroy();
     this.tombMapVeil?.destroy();
+    this.roomRevealVeils.forEach((veil) => veil.graphics.destroy());
     this.input.keyboard?.off('keydown', this.ensureAudioStarted, this);
   }
 
@@ -1521,7 +1752,7 @@ export class TombScene extends Phaser.Scene {
       return;
     }
 
-    this.cameras.main.setBounds(160, 0, 1280, WORLD_HEIGHT);
+    this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
     this.cameras.main.setRoundPixels(true);
     this.cameras.main.startFollow(
       this.player,
@@ -1662,6 +1893,7 @@ export class TombScene extends Phaser.Scene {
       .setDepth(10);
 
     this.createObjectiveUI();
+    this.createCandleSkillUI();
     this.createShopkeeperMessage();
     this.createCarryUI();
     this.createBackpackMenu();
@@ -1739,6 +1971,102 @@ export class TombScene extends Phaser.Scene {
     this.objectiveUI?.setVisible(true);
   }
 
+  private createCandleSkillUI(): void {
+    const { height } = this.scale;
+    const width = 256;
+    const panelHeight = 94;
+    this.candleSkillBackground = createStyleBoardPanel(
+      this,
+      width,
+      panelHeight,
+      'thin',
+      0.88,
+    );
+    const icon = this.add.graphics().setPosition(-98, -15);
+    icon.fillStyle(0x4d3821, 1);
+    icon.fillRoundedRect(-10, 7, 20, 7, 3);
+    icon.lineStyle(1, 0xb18449, 0.9);
+    icon.strokeRoundedRect(-10, 7, 20, 7, 3);
+    icon.fillStyle(0xd3bd86, 1);
+    icon.fillRoundedRect(-5, -14, 10, 22, 3);
+    icon.fillStyle(0xe68c43, 0.95);
+    icon.fillTriangle(0, -30, -6, -15, 6, -15);
+    icon.fillStyle(0xffdda0, 0.95);
+    icon.fillEllipse(0, -18, 5, 10);
+    const title = this.add.text(-72, -31, 'CHAMBER RITE / 点燃定魂烛', {
+      fontFamily: SANS_FONT,
+      fontSize: '13px',
+      fontStyle: 'bold',
+      color: UI_STYLE_BOARD.colors.textBright,
+    }).setOrigin(0, 0.5);
+    this.candleSkillState = this.add.text(-72, -7, '', {
+      fontFamily: SANS_FONT,
+      fontSize: '12px',
+      color: UI_STYLE_BOARD.colors.muted,
+      wordWrap: { width: 184 },
+    }).setOrigin(0, 0.5);
+    const keycap = createStyleBoardKeycap(this, 'E', 30, 26).setPosition(-98, 27);
+    const keyLabel = this.add.text(-77, 27, '靠近固定烛台施放', {
+      fontFamily: SANS_FONT,
+      fontSize: '11px',
+      color: UI_STYLE_BOARD.colors.muted,
+    }).setOrigin(0, 0.5);
+    this.candleSkillProgressBar = this.add.graphics();
+    this.candleSkillUI = this.add.container(154, height - 112, [
+      this.candleSkillBackground,
+      icon,
+      title,
+      this.candleSkillState,
+      keycap,
+      keyLabel,
+      this.candleSkillProgressBar,
+    ])
+      .setScrollFactor(0)
+      .setDepth(16)
+      .setVisible(false);
+    this.updateCandleSkillUI();
+  }
+
+  private updateCandleSkillUI(): void {
+    if (
+      !this.candleSkillUI ||
+      !this.candleSkillBackground ||
+      !this.candleSkillState ||
+      !this.candleSkillProgressBar
+    ) {
+      return;
+    }
+    const candleSelected = this.nearbyInteraction?.kind === 'room-exploration';
+    const remaining = this.getRemainingRoomCount();
+    const active = this.candleLightingActive;
+    drawStyleBoardPanel(
+      this.candleSkillBackground,
+      256,
+      94,
+      active || candleSelected ? 'standard' : 'thin',
+      active || candleSelected ? 0.97 : 0.82,
+    );
+    this.candleSkillState
+      .setText(
+        active
+          ? '引火中…保持仪式'
+          : candleSelected
+            ? '可施放 · 点亮当前墓室'
+            : remaining === 0
+              ? '五盏定魂烛已全部点亮'
+              : `寻找固定烛台 · 剩余 ${remaining} 盏`,
+      )
+      .setColor(active || candleSelected ? '#d9b66b' : UI_STYLE_BOARD.colors.muted);
+    this.candleSkillProgressBar.clear();
+    this.candleSkillProgressBar.fillStyle(0x0a0907, 0.9);
+    this.candleSkillProgressBar.fillRect(-72, 13, 174, 5);
+    const progress = active ? this.candleLightingProgress : candleSelected ? 0.12 : 0;
+    if (progress > 0) {
+      this.candleSkillProgressBar.fillStyle(0xd49a43, 0.94);
+      this.candleSkillProgressBar.fillRect(-72, 13, 174 * progress, 5);
+    }
+  }
+
   private resizeObjectivePanel(): void {
     if (!this.objectiveBackground || !this.objectiveUI || !this.objectiveText ||
         !this.objectiveChineseText || !this.restoreProgressText) {
@@ -1778,7 +2106,7 @@ export class TombScene extends Phaser.Scene {
     const restored = moved.filter((artifact) => this.isArtifactRestored(artifact)).length;
     const explored = this.exploredRoomIds.size;
     const lines = [
-      `EXPLORE CHAMBERS  ${explored}/${TOMB_ROOM_COUNT}  /  墓室 ${explored}/${TOMB_ROOM_COUNT}`,
+      `LIGHT CHAMBER CANDLES  ${explored}/${TOMB_ROOM_COUNT}  /  定魂烛 ${explored}/${TOMB_ROOM_COUNT}`,
     ];
     lines.push(
       `CORE RELICS  ${2 - this.getMissingCoreLoot().length}/2  /  核心物品 ${2 - this.getMissingCoreLoot().length}/2`,
@@ -1819,43 +2147,43 @@ export class TombScene extends Phaser.Scene {
 
   private createShopkeeperMessage(): void {
     const { width, height } = this.scale;
-    const background = createParchmentPanel(this, 920, 144);
+    const background = createStyleBoardPanel(this, 920, 172, 'carved', 0.985);
     const title = this.add
-      .text(-424, -45, 'SHOPKEEPER', {
+      .text(-424, -61, 'SHOPKEEPER  /', {
         fontFamily: SANS_FONT,
         fontSize: '13px',
         fontStyle: 'bold',
-        color: '#4f2415',
+        color: UI_STYLE_BOARD.colors.textBright,
         letterSpacing: 1,
       })
       .setOrigin(0, 0.5);
     const chineseTitle = this.add
-      .text(-326, -45, '古玩店老板', {
+      .text(-306, -61, '古玩店老板', {
         fontFamily: SANS_FONT,
         fontSize: '12px',
-        color: '#332016',
+        color: UI_STYLE_BOARD.colors.muted,
       })
       .setOrigin(0, 0.5);
     this.shopkeeperMessageText = this.add
-      .text(-424, -25, '', {
+      .text(-424, -36, '', {
         fontFamily: SANS_FONT,
         fontSize: '16px',
-        color: '#1e1109',
+        color: UI_STYLE_BOARD.colors.textBright,
         wordWrap: { width: 848 },
       })
       .setOrigin(0, 0);
     this.shopkeeperChineseMessageText = this.add
-      .text(-424, 18, '', {
+      .text(-424, 13, '', {
         fontFamily: SANS_FONT,
         fontSize: '14px',
         fontStyle: 'bold',
-        color: '#24140b',
+        color: UI_STYLE_BOARD.colors.text,
         wordWrap: { width: 848 },
       })
       .setOrigin(0, 0);
 
     this.shopkeeperMessage = this.add
-      .container(width / 2, height - 134, [
+      .container(width / 2, height - 142, [
         background,
         title,
         chineseTitle,
@@ -1886,6 +2214,9 @@ export class TombScene extends Phaser.Scene {
     this.shopkeeperFadeTween?.stop();
     this.shopkeeperMessageText.setText(englishText);
     this.shopkeeperChineseMessageText.setText(chineseText);
+    this.shopkeeperChineseMessageText.setY(
+      this.shopkeeperMessageText.y + this.shopkeeperMessageText.displayHeight + 7,
+    );
     this.shopkeeperMessage.setAlpha(1).setVisible(true);
     this.instructionText?.setVisible(false);
     this.escapeHintText?.setVisible(false);
@@ -1995,6 +2326,8 @@ export class TombScene extends Phaser.Scene {
           ? `${index + 1}  ${inHand ? '[HAND] ' : ''}${artifact.englishName} / ${artifact.chineseName}`
           : `${index + 1}  EMPTY / 空`,
       );
+      text.setFontSize(14);
+      text.setFontSize(text.displayWidth > 226 ? 12 : 14);
       text.setColor(inHand ? '#d4ad63' : artifact ? UI_STYLE_BOARD.colors.textBright : UI_STYLE_BOARD.colors.muted);
     });
     this.player?.setCarrying(Boolean(this.carrySystem.getCarriedArtifact()));
@@ -2054,17 +2387,18 @@ export class TombScene extends Phaser.Scene {
     this.backpackMenuDetailName = this.add.text(76, -75, '', {
       fontFamily: SERIF_FONT, fontSize: '23px', fontStyle: 'bold', color: UI_STYLE_BOARD.colors.textBright,
       wordWrap: { width: 280 },
-    }).setOrigin(0, 0.5);
+    }).setOrigin(0, 0);
     this.backpackMenuDetailChineseName = this.add.text(76, -36, '', {
       fontFamily: SERIF_FONT, fontSize: '18px', color: UI_STYLE_BOARD.colors.text,
-    }).setOrigin(0, 0.5);
+      wordWrap: { width: 280 },
+    }).setOrigin(0, 0);
     this.backpackMenuDetailState = this.add.text(76, 10, '', {
       fontFamily: SANS_FONT, fontSize: '14px', fontStyle: 'bold', color: '#829879',
-    }).setOrigin(0, 0.5);
+    }).setOrigin(0, 0);
     this.backpackMenuActionText = this.add.text(76, 78, '', {
       fontFamily: SANS_FONT, fontSize: '16px', fontStyle: 'bold', color: '#d4ad63',
       wordWrap: { width: 280 },
-    }).setOrigin(0, 0.5);
+    }).setOrigin(0, 0);
     const navigation = this.add.text(-348, 192, 'W / S 或 1 / 2  选择     E  确认     TAB / ESC  关闭', {
       fontFamily: SANS_FONT, fontSize: '14px', color: UI_STYLE_BOARD.colors.muted,
     }).setOrigin(0, 0.5);
@@ -2096,10 +2430,29 @@ export class TombScene extends Phaser.Scene {
     this.backpackMenuDetailState?.setText(
       selected ? storedOnly ? 'CORE RELIC / 核心物品' : inHand ? 'IN HAND / 当前手持' : 'STORED / 已收纳' : 'NO ITEM / 无物品',
     ).setColor(storedOnly ? '#8da58a' : inHand ? '#d4ad63' : '#829879');
-    this.backpackMenuActionText?.setText(!selected ? '此栏位没有物品' : inHand
+    this.backpackMenuActionText?.setText(!selected ? '这个栏位是空的' : inHand
       ? 'E  STORE IN BACKPACK / 收回背包'
-      : storedOnly ? 'PROTECTED — CANNOT BE LEFT HERE / 目标物品不可遗留'
+      : storedOnly ? 'PROTECTED — CANNOT BE LEFT HERE / 核心物品不能留在墓里'
       : 'E  HOLD THIS ITEM / 取出手持');
+    if (
+      this.backpackMenuDetailName &&
+      this.backpackMenuDetailChineseName &&
+      this.backpackMenuDetailState &&
+      this.backpackMenuActionText
+    ) {
+      this.backpackMenuDetailName.setY(-87);
+      this.backpackMenuDetailChineseName.setY(
+        this.backpackMenuDetailName.y + this.backpackMenuDetailName.displayHeight + 7,
+      );
+      this.backpackMenuDetailState.setY(
+        this.backpackMenuDetailChineseName.y +
+          this.backpackMenuDetailChineseName.displayHeight +
+          15,
+      );
+      this.backpackMenuActionText.setY(
+        this.backpackMenuDetailState.y + this.backpackMenuDetailState.displayHeight + 28,
+      );
+    }
   }
 
   private openBackpackMenu(): void {
@@ -2158,7 +2511,7 @@ export class TombScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
     const chineseTitle = this.add
-      .text(0, -130, '确定离开墓穴？', {
+      .text(0, -130, '现在离开墓穴吗？', {
         fontFamily: SERIF_FONT,
         fontSize: '21px',
         color: '#b9ae95',
@@ -2172,7 +2525,7 @@ export class TombScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
     const chineseWarning = this.add
-      .text(0, -65, '离开后将无法返回。', {
+      .text(0, -65, '离开后，本次探索将直接结束。', {
         fontFamily: SANS_FONT,
         fontSize: '15px',
         color: '#938a76',
@@ -2200,6 +2553,8 @@ export class TombScene extends Phaser.Scene {
         fontSize: '24px',
         fontStyle: 'bold',
         color: '#e1d7bc',
+        align: 'center',
+        wordWrap: { width: 660 },
       })
       .setOrigin(0.5);
     this.departureCarriedChinese = this.add
@@ -2207,6 +2562,8 @@ export class TombScene extends Phaser.Scene {
         fontFamily: SERIF_FONT,
         fontSize: '16px',
         color: '#9da38b',
+        align: 'center',
+        wordWrap: { width: 660 },
       })
       .setOrigin(0.5);
     const confirmHint = this.add
@@ -2304,7 +2661,7 @@ export class TombScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
     const settlementNoteChinese = this.add
-      .text(0, 88, '罗盘下的包布中还夹着一本空白线装册。\n归还供物时留下的圆形尘印，也许能让老板辨认出什么。', {
+      .text(0, 88, '罗盘下的包布里，还夹着一本空白线装册。\n供物归位后留下的圆形尘印，也许能帮助老板辨认它们。', {
         fontFamily: SERIF_FONT,
         fontSize: '15px',
         color: '#9da38b',
@@ -2379,12 +2736,12 @@ export class TombScene extends Phaser.Scene {
 
     const sourceTexture = this.textures.get(REFINED_TOMB_TEXTURE);
     const slices = [
-      { key: 'north', source: [422, 28, 334, 262], target: [610, 20, 380, 300] },
+      { key: 'north', source: [422, 28, 334, 262], target: [515, 20, 570, 300] },
       { key: 'north-link', source: [548, 278, 84, 60], target: [752, 288, 96, 94] },
-      { key: 'west', source: [72, 335, 292, 223], target: [190, 410, 330, 210] },
+      { key: 'west', source: [72, 335, 292, 223], target: [25, 410, 495, 210] },
       { key: 'central', source: [337, 291, 510, 287], target: [520, 350, 560, 280] },
-      { key: 'east', source: [844, 335, 326, 223], target: [1080, 410, 330, 210] },
-      { key: 'south', source: [455, 566, 276, 158], target: [640, 620, 320, 180] },
+      { key: 'east', source: [844, 335, 326, 223], target: [1080, 410, 495, 210] },
+      { key: 'south', source: [455, 566, 276, 158], target: [560, 620, 480, 180] },
       { key: 'corridor', source: [422, 702, 314, 512], target: [640, 768, 320, 856] },
     ] as const;
 
@@ -2523,9 +2880,9 @@ export class TombScene extends Phaser.Scene {
       .setDepth(8)
       .setVisible(false);
 
-    const noticeBackground = createStyleBoardPanel(this, 660, 112, 'carved', 0.98);
+    const noticeBackground = createStyleBoardPanel(this, 660, 132, 'carved', 0.98);
     const noticeTitle = this.add
-      .text(-288, -32, 'A HOLLOW SPACE ANSWERS', {
+      .text(-288, -42, 'A HOLLOW SPACE ANSWERS', {
         fontFamily: SERIF_FONT,
         fontSize: '20px',
         fontStyle: 'bold',
@@ -2533,13 +2890,14 @@ export class TombScene extends Phaser.Scene {
       })
       .setOrigin(0, 0.5);
     const noticeBody = this.add
-      .text(-288, 8, 'Cold air rises between the boards. The ladder descends beyond the drawn tomb plan.\n木板下涌出冷气。梯子通向墓图上不存在的空间。', {
+      .text(-288, -12, 'Cold air rises between the boards. The ladder descends beyond the drawn tomb plan.\n冷气从木板缝里涌上来。下面还有一段梯子，通向墓图上没有画出的空间。', {
         fontFamily: SANS_FONT,
         fontSize: '14px',
         color: UI_STYLE_BOARD.colors.text,
         lineSpacing: 5,
+        wordWrap: { width: 576 },
       })
-      .setOrigin(0, 0.5);
+      .setOrigin(0, 0);
     this.cellarEntryNotice = this.add
       .container(this.scale.width / 2, this.scale.height - 112, [
         noticeBackground,
@@ -2549,6 +2907,63 @@ export class TombScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(32)
       .setVisible(false);
+  }
+
+  private getActivePointLights(time: number): TombPointLight[] {
+    const lights: TombPointLight[] = [];
+    if (this.candleIgnitionLight) lights.push(this.candleIgnitionLight);
+    for (const source of this.staticTombLights) {
+      if (!source.sprite.visible || source.sprite.alpha <= 0.02) continue;
+      const pulse = 0.94 + Math.sin(time / 126 + source.sprite.x * 0.01) * 0.06;
+      lights.push({
+        x: source.sprite.x,
+        y: source.sprite.y + source.offsetY,
+        radius: source.radius,
+        intensity: source.intensity * source.sprite.alpha * pulse,
+        color: source.color,
+      });
+    }
+    for (const point of this.roomExplorationPoints) {
+      const light = point.candle.getLightSource();
+      if (light) lights.push(light);
+    }
+    lights.push(...(this.ceremonialGate?.getPointLights() ?? []));
+    return lights;
+  }
+
+  private updateDynamicShadows(pointLights: readonly TombPointLight[]): void {
+    if (!this.player || !this.dynamicShadowSystem) return;
+    const lamp = this.directionalLamp?.getDebugInfo();
+    const flashlight = lamp && lamp.isOn && lamp.brightness > 0.01
+      ? {
+          x: lamp.originX,
+          y: lamp.originY,
+          angle: lamp.angleRadians,
+          distance: TOMB_FEEL.lamp.effectiveDistance,
+          halfAngle: TOMB_FEEL.lamp.coneHalfAngle,
+          intensity: lamp.brightness,
+        }
+      : null;
+    const casters: TombShadowCaster[] = [
+      {
+        x: this.player.x,
+        y: this.player.y + 8,
+        radius: 12,
+        height: 48,
+        visible: this.player.visible,
+      },
+      ...this.investigableObjects.map((artifact) => ({
+        x: artifact.worldX,
+        y: artifact.worldY + 3,
+        radius: artifact.id === 'sealed-coffin' ? 30 : 13,
+        height: artifact.id === 'sealed-coffin' ? 38 : 42,
+        visible:
+          artifact.isAvailable &&
+          artifact.locationState === 'world' &&
+          artifact.visualObject.visible,
+      })),
+    ];
+    this.dynamicShadowSystem.update(flashlight, pointLights, casters);
   }
 
   private createCellarDiscoveryPanel(): void {
@@ -2579,7 +2994,7 @@ export class TombScene extends Phaser.Scene {
       .text(
         -90,
         -84,
-        'The paper is dry. The cellar is not.\nRoutes appear only when the compass needle turns away.\n\n纸页干燥，地窖却潮湿。\n当罗盘指针偏离时，图上的路线才会浮现。',
+        'The paper is dry. The cellar is not.\nRoutes appear only when the compass needle turns away.\n\n地窖这么潮，纸页却是干的。\n只有当罗盘指针偏离方位时，纸上的路线才会显出来。',
         {
           fontFamily: SANS_FONT,
           fontSize: '16px',
@@ -2597,6 +3012,9 @@ export class TombScene extends Phaser.Scene {
         color: '#d4ad63',
       })
       .setOrigin(0, 0.5);
+    this.cellarDiscoveryAction.setY(
+      Math.min(164, body.y + body.displayHeight + 28),
+    );
     const close = this.add
       .text(390, 194, 'ESC  Close / 关闭', {
         fontFamily: SANS_FONT,
@@ -2626,8 +3044,8 @@ export class TombScene extends Phaser.Scene {
       const prompt = createStyleBoardPrompt(
         this,
         'E',
-        `View Mural / 细看${mural.chineseName}`,
-        260,
+        'Inspect Mural / 查看壁画',
+        220,
         42,
       )
         .setPosition(mural.worldX < ROOM_CENTER_X ? 704 : 896, mural.worldY - 74)
@@ -2641,39 +3059,47 @@ export class TombScene extends Phaser.Scene {
     const { width, height } = this.scale;
     const scrim = this.add.rectangle(-width / 2, -height / 2, width, height, 0x080706, 0.86)
       .setOrigin(0);
-    const background = createStyleBoardPanel(this, 940, 620, 'carved', 0.995);
-    const previewFrame = createStyleBoardPanel(this, 390, 520, 'standard', 0.92).setX(-242);
+    const background = createStyleBoardPanel(this, 1180, 680, 'carved', 0.995);
+    const previewFrame = createStyleBoardPanel(this, 860, 648, 'standard', 0.92).setX(-150);
     this.muralDiscoveryPreview = this.add
-      .image(-242, -8, CORRIDOR_MURAL_TEXTURES.leftUpper)
-      .setDisplaySize(222, 472);
-    this.muralDiscoveryEnglishTitle = this.add.text(0, -246, '', {
+      .image(-150, 0, CORRIDOR_MURAL_TEXTURES.leftUpper)
+      .setDisplaySize(820, 615);
+    const revealLabel = this.add.text(305, -300, 'MURAL REVEALED / 壁画释义', {
+      fontFamily: SANS_FONT,
+      fontSize: '13px',
+      fontStyle: 'bold',
+      color: UI_STYLE_BOARD.colors.muted,
+      letterSpacing: 1,
+    }).setOrigin(0, 0.5);
+    this.muralDiscoveryEnglishTitle = this.add.text(305, -258, '', {
       fontFamily: SERIF_FONT,
-      fontSize: '26px',
+      fontSize: '25px',
       fontStyle: 'bold',
       color: UI_STYLE_BOARD.colors.textBright,
-    }).setOrigin(0, 0.5);
-    this.muralDiscoveryChineseTitle = this.add.text(0, -208, '', {
+      wordWrap: { width: 250, useAdvancedWrap: true },
+    }).setOrigin(0, 0);
+    this.muralDiscoveryChineseTitle = this.add.text(305, -204, '', {
       fontFamily: SERIF_FONT,
-      fontSize: '22px',
+      fontSize: '24px',
       fontStyle: 'bold',
       color: '#d4ad63',
     }).setOrigin(0, 0.5);
-    const rule = this.add.rectangle(0, -178, 360, 2, 0x8b6a3d, 0.72).setOrigin(0, 0.5);
-    this.muralDiscoveryEnglishBody = this.add.text(0, -148, '', {
+    const rule = this.add.rectangle(305, -174, 250, 2, 0x8b6a3d, 0.72).setOrigin(0, 0.5);
+    this.muralDiscoveryEnglishBody = this.add.text(305, -144, '', {
       fontFamily: SANS_FONT,
-      fontSize: '17px',
+      fontSize: '15px',
       color: UI_STYLE_BOARD.colors.text,
-      lineSpacing: 7,
-      wordWrap: { width: 360 },
+      lineSpacing: 6,
+      wordWrap: { width: 250, useAdvancedWrap: true },
     }).setOrigin(0, 0);
-    this.muralDiscoveryChineseBody = this.add.text(0, 24, '', {
+    this.muralDiscoveryChineseBody = this.add.text(305, 44, '', {
       fontFamily: SANS_FONT,
-      fontSize: '17px',
+      fontSize: '16px',
       color: '#c8b99b',
-      lineSpacing: 8,
-      wordWrap: { width: 360 },
+      lineSpacing: 7,
+      wordWrap: { width: 250, useAdvancedWrap: true },
     }).setOrigin(0, 0);
-    const hint = this.add.text(406, 274, 'E / ESC  收起壁画', {
+    const hint = this.add.text(540, 310, 'E / ESC  收起壁画', {
       fontFamily: SANS_FONT,
       fontSize: '14px',
       color: UI_STYLE_BOARD.colors.muted,
@@ -2683,6 +3109,7 @@ export class TombScene extends Phaser.Scene {
       background,
       previewFrame,
       this.muralDiscoveryPreview,
+      revealLabel,
       this.muralDiscoveryEnglishTitle,
       this.muralDiscoveryChineseTitle,
       rule,
@@ -2705,6 +3132,13 @@ export class TombScene extends Phaser.Scene {
     this.muralDiscoveryChineseTitle?.setText(mural.chineseName);
     this.muralDiscoveryEnglishBody?.setText(mural.description);
     this.muralDiscoveryChineseBody?.setText(mural.chineseDescription);
+    if (this.muralDiscoveryEnglishBody && this.muralDiscoveryChineseBody) {
+      this.muralDiscoveryChineseBody.setY(
+        this.muralDiscoveryEnglishBody.y +
+          this.muralDiscoveryEnglishBody.displayHeight +
+          18,
+      );
+    }
     this.muralDiscoveryPanel.setVisible(true).setAlpha(0).setScale(0.97);
     this.tweens.add({
       targets: this.muralDiscoveryPanel,
@@ -2955,11 +3389,11 @@ export class TombScene extends Phaser.Scene {
 
   private getTombWallSegments(): TombRect[] {
     return [
-      { x: 610, y: 20, width: 380, height: 32 },
-      { x: 610, y: 20, width: 32, height: 300 },
-      { x: 958, y: 20, width: 32, height: 300 },
-      { x: 610, y: 288, width: 134, height: 32 },
-      { x: 856, y: 288, width: 134, height: 32 },
+      { x: 515, y: 20, width: 570, height: 32 },
+      { x: 515, y: 20, width: 32, height: 300 },
+      { x: 1053, y: 20, width: 32, height: 300 },
+      { x: 515, y: 288, width: 229, height: 32 },
+      { x: 856, y: 288, width: 229, height: 32 },
       { x: 720, y: 288, width: 32, height: 94 },
       { x: 848, y: 288, width: 32, height: 94 },
       { x: 520, y: 350, width: 200, height: 32 },
@@ -2970,22 +3404,22 @@ export class TombScene extends Phaser.Scene {
       { x: 1048, y: 544, width: 32, height: 86 },
       { x: 520, y: 598, width: 224, height: 32 },
       { x: 856, y: 598, width: 224, height: 32 },
-      { x: 190, y: 410, width: 330, height: 32 },
-      { x: 190, y: 410, width: 32, height: 210 },
-      { x: 190, y: 588, width: 330, height: 32 },
+      { x: 25, y: 410, width: 495, height: 32 },
+      { x: 25, y: 410, width: 32, height: 210 },
+      { x: 25, y: 588, width: 495, height: 32 },
       { x: 488, y: 410, width: 32, height: 54 },
       { x: 488, y: 544, width: 32, height: 76 },
-      { x: 1080, y: 410, width: 330, height: 32 },
-      { x: 1378, y: 410, width: 32, height: 210 },
-      { x: 1080, y: 588, width: 330, height: 32 },
+      { x: 1080, y: 410, width: 495, height: 32 },
+      { x: 1543, y: 410, width: 32, height: 210 },
+      { x: 1080, y: 588, width: 495, height: 32 },
       { x: 1080, y: 410, width: 32, height: 54 },
       { x: 1080, y: 544, width: 32, height: 76 },
-      { x: 640, y: 620, width: 104, height: 32 },
-      { x: 856, y: 620, width: 104, height: 32 },
-      { x: 640, y: 620, width: 32, height: 180 },
-      { x: 928, y: 620, width: 32, height: 180 },
-      { x: 640, y: 768, width: 112, height: 32 },
-      { x: 848, y: 768, width: 112, height: 32 },
+      { x: 560, y: 620, width: 184, height: 32 },
+      { x: 856, y: 620, width: 184, height: 32 },
+      { x: 560, y: 620, width: 32, height: 180 },
+      { x: 1008, y: 620, width: 32, height: 180 },
+      { x: 560, y: 768, width: 192, height: 32 },
+      { x: 848, y: 768, width: 192, height: 32 },
       { x: 720, y: 768, width: 32, height: 192 },
       { x: 848, y: 768, width: 32, height: 192 },
       { x: CORRIDOR_LEFT, y: ENTRANCE_Y, width: 48, height: CORRIDOR_BOTTOM - ENTRANCE_Y },
@@ -3000,14 +3434,14 @@ export class TombScene extends Phaser.Scene {
     // Connecting strips keep a ripple continuous through open doorways while
     // preventing a complete ellipse from leaking into sealed rooms.
     return [
-      { x: 642, y: 52, width: 316, height: 236 },
+      { x: 547, y: 52, width: 506, height: 236 },
       { x: 752, y: 288, width: 96, height: 94 },
       { x: 552, y: 382, width: 496, height: 216 },
-      { x: 222, y: 442, width: 266, height: 146 },
+      { x: 57, y: 442, width: 431, height: 146 },
       { x: 488, y: 464, width: 64, height: 80 },
       { x: 1080, y: 464, width: 32, height: 80 },
-      { x: 1112, y: 442, width: 266, height: 146 },
-      { x: 672, y: 652, width: 256, height: 116 },
+      { x: 1112, y: 442, width: 431, height: 146 },
+      { x: 592, y: 652, width: 416, height: 116 },
       { x: 752, y: 768, width: 96, height: 192 },
       {
         x: CORRIDOR_FLOOR_LEFT,
@@ -3020,11 +3454,11 @@ export class TombScene extends Phaser.Scene {
 
   private createChamberProps(): void {
     // Main coffin chamber: tall funerary columns and a restrained ring of grave goods.
-    this.createTombProp(680, 154, 'pillar-a');
-    this.createTombProp(920, 154, 'pillar-b');
-    this.createTombProp(680, 258, 'urn-green');
-    this.createTombProp(734, 98, 'stone-slab');
-    this.createTombProp(866, 98, 'stone-slab');
+    this.createTombProp(600, 154, 'pillar-a');
+    this.createTombProp(1000, 154, 'pillar-b');
+    this.createTombProp(620, 258, 'urn-green');
+    this.createTombProp(700, 98, 'stone-slab');
+    this.createTombProp(900, 98, 'stone-slab');
 
     // Central antechamber: four stable offering slots surround a low ritual chest.
     this.createTombProp(800, 514, 'coffin-plain');
@@ -3034,17 +3468,17 @@ export class TombScene extends Phaser.Scene {
     this.createTombProp(1000, 574, 'stone-slab');
 
     // West ear chamber: pottery store and burial rack around the low-value vessel.
-    this.createTombProp(258, 570, 'burial-rack');
-    this.createTombProp(310, 564, 'urn-purple');
-    this.createTombProp(414, 564, 'urn-purple');
-    this.createTombProp(452, 478, 'ritual-idol');
+    this.createTombProp(120, 570, 'burial-rack');
+    this.createTombProp(198, 564, 'urn-purple');
+    this.createTombProp(374, 564, 'urn-purple');
+    this.createTombProp(468, 478, 'ritual-idol');
 
     // East ear chamber: green-glazed offerings and columns frame the mirror display.
-    this.createTombProp(1152, 566, 'pillar-a');
-    this.createTombProp(1352, 566, 'pillar-b');
-    this.createTombProp(1128, 474, 'urn-green');
-    this.createTombProp(1310, 562, 'urn-green');
-    this.createTombProp(1298, 500, 'burial-rack');
+    this.createTombProp(1130, 566, 'pillar-a');
+    this.createTombProp(1500, 566, 'pillar-b');
+    this.createTombProp(1160, 474, 'urn-green');
+    this.createTombProp(1395, 562, 'urn-green');
+    this.createTombProp(1510, 500, 'burial-rack');
 
     // South chamber keeps the central aisle open; the chest sits against the east wall.
     this.createTombProp(884, 736, 'coffin-plain');
@@ -3068,7 +3502,16 @@ export class TombScene extends Phaser.Scene {
     ];
 
     for (const animatedProp of animatedProps) {
-      this.animatedFlames.push(this.createAnimatedScenery(animatedProp));
+      const sprite = this.createAnimatedScenery(animatedProp);
+      this.animatedFlames.push(sprite);
+      const isCandle = animatedProp.animation.includes('candle');
+      this.staticTombLights.push({
+        sprite,
+        radius: isCandle ? 132 : 176,
+        intensity: isCandle ? 0.42 : 0.58,
+        color: isCandle ? 0xffb55f : 0xff9f4f,
+        offsetY: isCandle ? -34 : -48,
+      });
     }
 
     this.createAnimatedScenery({
@@ -3277,7 +3720,7 @@ export class TombScene extends Phaser.Scene {
         chineseName: '封闭的棺椁',
         description:
           'The lid has not been moved, but the dust around its edge is strangely thin.',
-        chineseDescription: '棺盖没有移动过，但边缘的积灰薄得异常。',
+        chineseDescription: '棺盖没有动过，边缘的灰却薄得不正常。',
         portable: false,
         hiddenValue: null,
         appraisalText: '',
@@ -3785,7 +4228,14 @@ export class TombScene extends Phaser.Scene {
           this.nearbyInteraction.point === point &&
           !this.activeInvestigation,
       );
+      point.candle.setNearby(
+        this.nearbyInteraction?.kind === 'room-exploration' &&
+          this.nearbyInteraction.point === point &&
+          !this.activeInvestigation &&
+          !this.candleLightingActive,
+      );
     }
+    this.updateCandleSkillUI();
 
     this.lockedExitPrompt?.setVisible(
       this.nearbyInteraction?.kind === 'locked-exit' &&
@@ -3821,112 +4271,113 @@ export class TombScene extends Phaser.Scene {
 
   private createInvestigationPanel(): void {
     const { width, height } = this.scale;
-    const panelWidth = 940;
-    const panelHeight = 480;
+    const panelWidth = 960;
+    const panelHeight = 560;
 
     const background = createStyleBoardPanel(this, panelWidth, panelHeight, 'carved', 0.98);
 
     this.panelEnglishName = this.add
-      .text(-430, -184, '', {
+      .text(-440, -244, '', {
         fontFamily: SERIF_FONT,
         fontSize: '28px',
         fontStyle: 'bold',
         color: '#eee4c9',
       })
-      .setOrigin(0, 0.5);
+      .setOrigin(0, 0);
 
     this.panelChineseName = this.add
-      .text(-430, -150, '', {
+      .text(-440, -206, '', {
         fontFamily: SERIF_FONT,
         fontSize: '17px',
         color: '#9da38b',
       })
-      .setOrigin(0, 0.5);
+      .setOrigin(0, 0);
 
     this.panelDescription = this.add
-      .text(-430, -124, '', {
+      .text(-440, -174, '', {
         fontFamily: SERIF_FONT,
         fontSize: '17px',
         color: '#d1c8b3',
-        wordWrap: { width: 860 },
+        wordWrap: { width: 880 },
         lineSpacing: 3,
       })
       .setOrigin(0, 0);
     this.panelChineseDescription = this.add
-      .text(-430, -78, '', {
+      .text(-440, -112, '', {
         fontFamily: SERIF_FONT,
         fontSize: '15px',
         color: '#9d9481',
-        wordWrap: { width: 860 },
+        wordWrap: { width: 880 },
         lineSpacing: 3,
       })
       .setOrigin(0, 0);
 
     this.panelAppraisalTitle = this.add
-      .text(-430, -34, 'APPRAISAL / 鉴定线索', {
+      .text(-440, -48, 'APPRAISAL / 鉴定线索', {
         fontFamily: SANS_FONT,
         fontSize: '14px',
         fontStyle: 'bold',
         color: '#998e74',
         letterSpacing: 1,
       })
-      .setOrigin(0, 0.5);
+      .setOrigin(0, 0);
 
     this.panelAppraisalText = this.add
-      .text(-430, -13, '', {
+      .text(-440, -18, '', {
         fontFamily: SERIF_FONT,
         fontSize: '15px',
         color: '#c8bea6',
-        wordWrap: { width: 860 },
+        wordWrap: { width: 880 },
         lineSpacing: 3,
       })
       .setOrigin(0, 0);
     this.panelChineseAppraisalText = this.add
-      .text(-430, 52, '', {
+      .text(-440, 48, '', {
         fontFamily: SERIF_FONT,
         fontSize: '14px',
         color: '#928a79',
-        wordWrap: { width: 860 },
+        wordWrap: { width: 880 },
         lineSpacing: 3,
       })
       .setOrigin(0, 0);
 
     this.panelCarryAction = this.add
-      .text(-430, 136, '', {
+      .text(-440, 146, '', {
         fontFamily: SANS_FONT,
         fontSize: '17px',
         fontStyle: 'bold',
         color: '#ded4b7',
       })
-      .setOrigin(0, 0.5);
+      .setOrigin(0, 0);
 
     this.panelSwapDescription = this.add
-      .text(-430, 160, '', {
+      .text(-440, 176, '', {
         fontFamily: SANS_FONT,
         fontSize: '15px',
         color: '#a9a089',
-        wordWrap: { width: 860 },
+        wordWrap: { width: 880 },
       })
       .setOrigin(0, 0);
     this.panelSwapChineseDescription = this.add
-      .text(-430, 187, '', {
+      .text(-440, 208, '', {
         fontFamily: SANS_FONT,
         fontSize: '13px',
         color: '#877f70',
-        wordWrap: { width: 860 },
+        wordWrap: { width: 880 },
       })
       .setOrigin(0, 0);
 
     const closeHint = this.add
-      .text(430, 220, 'TAB  BACKPACK / 背包     ESC  CLOSE / 关闭', {
+      .text(440, 252, 'TAB  BACKPACK / 背包     ESC  CLOSE / 关闭', {
         fontFamily: SANS_FONT,
         fontSize: '15px',
         color: '#8f846e',
       })
       .setOrigin(1, 0.5);
+    this.investigationCloseHint = closeHint;
 
     this.investigationPanel = this.add
-      .container(width / 2, height - 250, [
+      .container(width / 2, height - panelHeight / 2 - 18, [
         background,
         this.panelEnglishName,
         this.panelChineseName,
@@ -3969,7 +4420,6 @@ export class TombScene extends Phaser.Scene {
     }
 
     this.activeInvestigation = investigableObject;
-    this.markOfferingRoomExplored(investigableObject.id);
     this.nearbyInteraction = undefined;
     this.player.setMovementEnabled(false);
 
@@ -3991,6 +4441,7 @@ export class TombScene extends Phaser.Scene {
     this.panelChineseDescription.setText(investigableObject.chineseDescription);
     this.updateAppraisalPanel(investigableObject);
     this.updatePanelCarryAction(investigableObject);
+    this.layoutInvestigationPanel();
     this.investigationPanel.setVisible(true);
     this.instructionText?.setVisible(false);
     this.escapeHintText?.setVisible(false);
@@ -4048,7 +4499,7 @@ export class TombScene extends Phaser.Scene {
         'The backpack is full. Select an optional relic, hold it, then restore it to a display spot.',
       );
       this.panelSwapChineseDescription.setText(
-        `背包已满。按 TAB 选择要归还的器物，取出手持后放回对应位置。${carriedArtifact ? ` 当前手持：${carriedArtifact.chineseName}` : ''}`,
+        `背包满了。按 TAB 取出一件器物，再把它放回对应位置。${carriedArtifact ? ` 当前手持：${carriedArtifact.chineseName}` : ''}`,
       );
       return;
     }
@@ -4069,7 +4520,7 @@ export class TombScene extends Phaser.Scene {
       this.panelSwapDescription.setText(
         'The Atlas cannot be left in the tomb. Restore an optional relic before taking this item.',
       );
-      this.panelSwapChineseDescription.setText('请先归还一件非目标器物；《万字藏图》不能留在墓中。');
+      this.panelSwapChineseDescription.setText('请先归还一件非核心器物；《万字藏图》不能留在墓中。');
       return;
     }
 
@@ -4079,6 +4530,51 @@ export class TombScene extends Phaser.Scene {
     this.panelSwapChineseDescription.setText(
       `把${carriedArtifact.chineseName}留在这里，拿走${artifact.chineseName}。`,
     );
+  }
+
+  private layoutInvestigationPanel(): void {
+    if (
+      !this.panelEnglishName ||
+      !this.panelChineseName ||
+      !this.panelDescription ||
+      !this.panelChineseDescription ||
+      !this.panelAppraisalTitle ||
+      !this.panelAppraisalText ||
+      !this.panelChineseAppraisalText ||
+      !this.panelCarryAction ||
+      !this.panelSwapDescription ||
+      !this.panelSwapChineseDescription
+    ) {
+      return;
+    }
+
+    let cursor = -246;
+    this.panelEnglishName.setY(cursor);
+    cursor += this.panelEnglishName.displayHeight + 1;
+    this.panelChineseName.setY(cursor);
+    cursor += this.panelChineseName.displayHeight + 15;
+    this.panelDescription.setY(cursor);
+    cursor += this.panelDescription.displayHeight + 8;
+    this.panelChineseDescription.setY(cursor);
+    cursor += this.panelChineseDescription.displayHeight + 17;
+
+    if (this.panelAppraisalTitle.visible) {
+      this.panelAppraisalTitle.setY(cursor);
+      cursor += this.panelAppraisalTitle.displayHeight + 7;
+      this.panelAppraisalText.setY(cursor);
+      cursor += this.panelAppraisalText.displayHeight + 8;
+      this.panelChineseAppraisalText.setY(cursor);
+      cursor += this.panelChineseAppraisalText.displayHeight + 18;
+    }
+
+    this.panelCarryAction.setY(cursor);
+    cursor += this.panelCarryAction.displayHeight + 9;
+    this.panelSwapDescription.setY(cursor);
+    if (this.panelSwapDescription.text) {
+      cursor += this.panelSwapDescription.displayHeight + 5;
+    }
+    this.panelSwapChineseDescription.setY(cursor);
+    this.investigationCloseHint?.setY(252);
   }
 
   private closeInvestigation(): void {
@@ -4135,11 +4631,10 @@ export class TombScene extends Phaser.Scene {
       hold: 2300,
       onComplete: () => this.cellarEntryNotice?.setVisible(false),
     });
-    this.completeRoomExploration('burial-chamber');
     this.proceduralAudio?.playCue('door-unlock');
     this.updateObjectiveUI(
       'A hidden cellar lies beneath the burial chamber. Descend and find what the geomancer concealed.',
-      '主墓室下方出现了隐藏地窖。下去寻找风水师藏起来的东西。',
+      '主墓室下面藏着一层地窖。下去看看风水师把什么藏在了里面。',
     );
   }
 
@@ -4177,8 +4672,8 @@ export class TombScene extends Phaser.Scene {
             ? 'Return by the ladder with the Myriad Character Atlas.'
             : 'Search the hidden cellar. The northern pedestal is unnaturally dry.',
           this.cellarAtlasCollected
-            ? '带着《万字藏图》从梯子返回主墓室。'
-            : '搜索隐藏墓室。北侧石台干燥得不合常理。',
+            ? '收好《万字藏图》，从梯子返回主墓室。'
+            : '搜索隐藏地窖。北侧石台异常干燥，先去那里看看。',
         );
         this.activeLocationTitle?.container.destroy(true);
         this.activeLocationTitle = createTimedLocationTitle(this, {
@@ -4223,7 +4718,7 @@ export class TombScene extends Phaser.Scene {
     this.updateInteractionPrompt();
     this.cellarDiscoveryAction?.setText(
       this.carrySystem.isFull()
-        ? 'TAB  MANAGE BACKPACK — RESTORE AN OPTIONAL RELIC / 背包已满，先整理背包'
+        ? 'TAB  MANAGE BACKPACK — RESTORE AN OPTIONAL RELIC / 背包满了。按 TAB 整理背包，先放回一件非核心器物'
         : 'E  STORE IN BACKPACK  /  收入背包',
     );
     this.cellarDiscoveryPanel.setVisible(true).setAlpha(0).setScale(0.96);
@@ -4253,7 +4748,7 @@ export class TombScene extends Phaser.Scene {
     }
     if (this.carrySystem.isFull() || !this.carrySystem.takeArtifact(atlas)) {
       this.cellarDiscoveryAction?.setText(
-        'TAB  MANAGE BACKPACK / 背包已满，请先选择并归还其他器物',
+        'TAB  MANAGE BACKPACK / 背包满了。按 TAB 选择并归还一件其他器物',
       );
       this.cameras.main.shake(120, 0.0015);
       return;
@@ -4271,8 +4766,8 @@ export class TombScene extends Phaser.Scene {
         ? 'The compass and the Myriad Character Atlas are secured. Climb back and finish exploring.'
         : 'The Myriad Character Atlas is secured. Climb back and retrieve the Geomancer’s Compass.',
       this.carrySystem.hasArtifact('geomancers-compass')
-        ? '风水罗盘与《万字藏图》均已收好。爬回去完成探索。'
-        : '已取得《万字藏图》。爬回主墓室并取得风水罗盘。',
+        ? '罗盘和《万字藏图》都已收好。爬回主墓室，完成剩下的调查。'
+        : '《万字藏图》已经收好。回到主墓室，再去取风水罗盘。',
     );
     this.evaluateDepartureReadiness();
   }
@@ -4281,14 +4776,14 @@ export class TombScene extends Phaser.Scene {
     const missing = this.getMissingCoreLoot();
     if (missing.length === 0) {
       this.updateObjectiveUI(
-        'Both core relics are secured. Explore every chamber and restore anything else you moved.',
-        '两个核心物品均已取得。继续探索全部墓室，并归位其他被移动的器物。',
+        'Both core relics are secured. Light every chamber candle and restore anything else you moved.',
+        '两件核心物品都已收好。点燃剩下的定魂烛，并放回所有移动过的器物。',
       );
       return;
     }
     this.updateObjectiveUI(
       `Core relic still missing: ${missing.join(' and ')}.`,
-      `仍缺少核心物品：${missing.includes('Myriad Character Atlas') ? '《万字藏图》' : ''}${missing.length > 1 ? '与' : ''}${missing.includes('Geomancer’s Compass') ? '风水罗盘' : ''}。`,
+      `还没有拿到：${missing.includes('Myriad Character Atlas') ? '《万字藏图》' : ''}${missing.length > 1 ? '和' : ''}${missing.includes('Geomancer’s Compass') ? '风水罗盘' : ''}。`,
     );
   }
 
@@ -4444,7 +4939,7 @@ export class TombScene extends Phaser.Scene {
       coffin.description =
         'The seal has been broken. Dust continues to fall from somewhere beneath the lid.';
       coffin.chineseDescription =
-        '封印已经破损。棺盖下方某处仍不断落下灰尘。';
+        '封印已经断了。棺盖下面，还在不断往下掉灰。';
     }
 
     const compass = this.investigableObjects.find(
@@ -4458,7 +4953,7 @@ export class TombScene extends Phaser.Scene {
 
     this.updateObjectiveUI(
       'Pick up the Geomancer’s Compass.',
-      '拿起风水罗盘。',
+      '查看并收好风水罗盘。',
     );
     this.playCoffinOpeningFeedback();
     this.closeInvestigation();
@@ -4608,7 +5103,7 @@ export class TombScene extends Phaser.Scene {
     this.compassHasBeenRetrieved = true;
     this.updateObjectiveUI(
       'The compass is optional loot. Continue exploring every chamber; restore any offering you moved.',
-      '罗盘属于可选战利品。继续探索全部墓室，并归位所有被移动的供物。',
+      '罗盘已经收好。继续点燃其余墓室的定魂烛，并把移动过的供物放回原位。',
     );
     this.updateCoreLootObjective();
   }
@@ -4690,7 +5185,7 @@ export class TombScene extends Phaser.Scene {
       this.playFlamePattern('appeased');
       this.updateObjectiveUI(
         'The tomb went still. Take the disturbed offering beyond this room.',
-        '墓穴重新安静下来。把那件供物带出房间。',
+        '脚步停了。再把那件供物带出房间，看看它会不会跟来。',
       );
       return;
     }
@@ -4701,12 +5196,12 @@ export class TombScene extends Phaser.Scene {
       this.playFlamePattern('remembering');
       this.updateObjectiveUI(
         'Carry the disturbed offering beyond this room. Listen behind you.',
-        '把被移动的供物带出房间。听一听身后的动静。',
+        '把供物带出这间墓室。留意身后的脚步。',
       );
       this.showShopkeeperMessage(
         'remembering',
         'The room went quiet. It noticed the missing weight.',
-        '墓室忽然安静了。它察觉到了少掉的重量。',
+        '“听见了吗？整间墓室都静了。它知道少了东西。”',
       );
       this.encounterTimers.push(
         this.time.delayedCall(280, () => this.proceduralAudio?.setAmbientMuted(false)),
@@ -4719,7 +5214,7 @@ export class TombScene extends Phaser.Scene {
       this.playFlamePattern('following');
       this.updateObjectiveUI(
         'The second footsteps are closing in. Return toward the entrance.',
-        '第二组脚步正在靠近。返回入口方向。',
+        '后面多了一组脚步。先往入口方向退。',
       );
       return;
     }
@@ -4731,7 +5226,7 @@ export class TombScene extends Phaser.Scene {
       this.cameras.main.shake(120, TOMB_FEEL.feedback.manifestationShake);
       this.updateObjectiveUI(
         'The wall shadow advances in the light. Extinguish the lamp, then restore the offering.',
-        '墙影只在灯光中靠近。熄灯，然后把供物归位。',
+        '墙上的影子只会在灯光里靠近。熄灯，再把供物放回原位。',
       );
       return;
     }
@@ -4750,12 +5245,12 @@ export class TombScene extends Phaser.Scene {
       this.proceduralAudio?.playCue('door-reject');
       this.updateObjectiveUI(
         'It remembers faster now. Put the offering back again.',
-        '它这次记得更快。再次把供物放回原位。',
+        '它这次追得更快。立刻把供物放回原位。',
       );
       this.showShopkeeperMessage(
         'provoked',
         'You had a way out. You chose to touch it again.',
-        '出口已经开过。是你选择再次碰它。',
+        '“门已经开过一次了。是你自己，又碰了那件东西。”',
       );
     }
   }
@@ -4821,7 +5316,7 @@ export class TombScene extends Phaser.Scene {
     this.cameras.main.shake(130, TOMB_FEEL.feedback.rejectShake);
     this.updateObjectiveUI(
       'The door rejected this arrangement. Listen for the older rhythm.',
-      '墓门拒绝了这个摆法。听清最早出现的那段节奏。',
+      '这个位置不对。听最先出现的那组脚步，它会把你带回原位。',
     );
     if (this.entranceGateVisual) {
       this.tweens.killTweensOf(this.entranceGateVisual);
@@ -4908,13 +5403,13 @@ export class TombScene extends Phaser.Scene {
       if (!wasReady) {
         this.proceduralAudio?.playCue('door-unlock');
         this.updateObjectiveUI(
-          'Every chamber has been explored. The sealed door is open; return to the far end of the burial passage.',
-          '全部墓室均已探索，封门已经开启。返回墓道最远端撤离。',
+          'Every chamber candle is lit. The sealed door is open; return to the far end of the burial passage.',
+          '所有墓室的定魂烛都已点燃，封门打开了。沿墓道返回入口。',
         );
         this.showShopkeeperMessage(
           'released',
-          'You have seen every chamber. Leave everything you moved where it belonged, then come back.',
-          '每一间都看过了。动过的器物留在原位，现在回来。',
+          'Every chamber candle is burning. Leave everything you moved where it belonged, then come back.',
+          '“定魂烛都亮了。把动过的东西放回原位，然后回来。”',
         );
       }
       return;
@@ -4931,11 +5426,11 @@ export class TombScene extends Phaser.Scene {
     if (unrestoredObjects > 0) {
       this.updateObjectiveUI(
         remainingRooms > 0
-          ? `Explore ${remainingRooms} more ${remainingRooms === 1 ? 'chamber' : 'chambers'}, and restore every moved burial object.`
-          : 'Every chamber has been explored, but the tomb still detects a displaced object. Restore every moved burial object.',
+          ? `Light ${remainingRooms} more chamber ${remainingRooms === 1 ? 'candle' : 'candles'}, and restore every moved burial object.`
+          : 'Every chamber candle is lit, but the tomb still detects a displaced object. Restore every moved burial object.',
         remainingRooms > 0
-          ? `还需探索并交互 ${remainingRooms} 间墓室，同时将所有被移动的器物归位。`
-          : '全部墓室均已探索，但墓穴仍察觉到器物错位。请将所有被移动的器物归位。',
+          ? `还要点燃 ${remainingRooms} 间墓室的定魂烛，并放回所有移动过的器物。`
+          : '定魂烛都已点燃，但还有器物不在原位。把移动过的东西全部放回去。',
       );
       return;
     }
@@ -4943,14 +5438,14 @@ export class TombScene extends Phaser.Scene {
     if (missingCoreLoot.length > 0 && remainingRooms === 0) {
       this.updateObjectiveUI(
         `Before leaving, recover ${missingCoreLoot.join(' and ')}.`,
-        `离开前必须取得${missingCoreLoot.includes('Myriad Character Atlas') ? '《万字藏图》' : ''}${missingCoreLoot.length > 1 ? '与' : ''}${missingCoreLoot.includes('Geomancer’s Compass') ? '风水罗盘' : ''}。`,
+        `离开前，还要拿到${missingCoreLoot.includes('Myriad Character Atlas') ? '《万字藏图》' : ''}${missingCoreLoot.length > 1 ? '和' : ''}${missingCoreLoot.includes('Geomancer’s Compass') ? '风水罗盘' : ''}。`,
       );
       return;
     }
 
     this.updateObjectiveUI(
-      `Explore ${remainingRooms} more ${remainingRooms === 1 ? 'chamber' : 'chambers'} before leaving.`,
-      `离开前还需探索并交互 ${remainingRooms} 间墓室。`,
+      `Light ${remainingRooms} more chamber ${remainingRooms === 1 ? 'candle' : 'candles'} before leaving.`,
+      `离开前，还要点燃 ${remainingRooms} 间墓室的定魂烛。`,
     );
   }
 
@@ -5124,15 +5619,15 @@ export class TombScene extends Phaser.Scene {
     }
 
     this.addStaticObstacle(obstacles, COFFIN_X, COFFIN_Y, 92, 48);
-    this.addStaticObstacle(obstacles, 680, 148, 24, 18);
-    this.addStaticObstacle(obstacles, 920, 148, 24, 18);
+    this.addStaticObstacle(obstacles, 600, 148, 24, 18);
+    this.addStaticObstacle(obstacles, 1000, 148, 24, 18);
     this.addStaticObstacle(obstacles, 800, 502, 84, 24);
     this.addStaticObstacle(obstacles, 600, 566, 36, 16);
     this.addStaticObstacle(obstacles, 1000, 566, 36, 16);
-    this.addStaticObstacle(obstacles, 258, 561, 54, 18);
-    this.addStaticObstacle(obstacles, 1152, 558, 24, 18);
-    this.addStaticObstacle(obstacles, 1352, 558, 24, 18);
-    this.addStaticObstacle(obstacles, 1298, 491, 54, 18);
+    this.addStaticObstacle(obstacles, 120, 561, 54, 18);
+    this.addStaticObstacle(obstacles, 1130, 558, 24, 18);
+    this.addStaticObstacle(obstacles, 1500, 558, 24, 18);
+    this.addStaticObstacle(obstacles, 1510, 491, 54, 18);
     this.addStaticObstacle(obstacles, 884, 724, 84, 24);
     this.artifactCollisions.set(
       'burial-vessel',

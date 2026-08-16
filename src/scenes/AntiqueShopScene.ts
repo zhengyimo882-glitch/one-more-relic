@@ -112,10 +112,10 @@ const ARTIFACT_DATA: Record<PortableDepartureChoice, ArtifactShopData> = {
     offerLabel: '¥800',
     appraisal:
       'Late-Qing burial clay. The workmanship is ordinary, and the rim has been repaired.',
-    chineseAppraisal: '晚清的随葬陶器。工艺普通，器口也经过修补。',
+    chineseAppraisal: '晚清的随葬陶器。做工普通，器口后来修补过。',
     appraisalQuote:
       '“There are buyers for objects like this, but not many.”',
-    chineseAppraisalQuote: '“这种东西有人收，不过不会太多。”',
+    chineseAppraisalQuote: '“有人收。不过，价不会太高。”',
   },
   'bronze-mirror': {
     englishName: 'Bronze Mirror',
@@ -125,9 +125,9 @@ const ARTIFACT_DATA: Record<PortableDepartureChoice, ArtifactShopData> = {
     appraisal:
       'This was not made merely for dressing. The inscription matters more than the bronze.',
     chineseAppraisal:
-      '这面镜子并不只是用来照人。背后的铭文，比铜料本身更重要。',
+      '这面镜子不只是用来照人的。背后的铭文，比这块铜更值钱。',
     appraisalQuote: '“Someone will pay for a complete inscription.”',
-    chineseAppraisalQuote: '“铭文完整，就会有人愿意出价。”',
+    chineseAppraisalQuote: '“铭文要是完整，自然有人肯出价。”',
   },
   'geomancers-compass': {
     englishName: 'Geomancer’s Compass',
@@ -137,58 +137,58 @@ const ARTIFACT_DATA: Record<PortableDepartureChoice, ArtifactShopData> = {
     appraisal:
       'A geomancer’s working compass. Water damaged the face, but the inner mechanism still moves.',
     chineseAppraisal:
-      '风水师真正使用过的罗盘。盘面受了潮，但里面的机关还能转动。',
+      '风水师生前用过的罗盘。盘面受了潮，里面的机关却还能转。',
     appraisalQuote:
       '“To most buyers, it is only a broken surveying tool.”',
     chineseAppraisalQuote:
-      '“对大多数买家来说，它不过是件坏掉的测量工具。”',
+      '“在大多数人眼里，它只是一件坏掉的测量工具。”',
   },
 };
 
 const REACTION_DATA: Record<DepartureChoice, ReactionData> = {
   empty: {
     reaction: 'The shopkeeper studies you longer than the empty bag.',
-    chineseReaction: '老板盯着你的时间，比盯着那只空袋子更久。',
+    chineseReaction: '老板没有看那只空袋子，只是盯着你看了很久。',
     quote: '“Careful—or afraid?”',
-    chineseQuote: '“小心，还是害怕？”',
+    chineseQuote: '“谨慎……还是怕了？”',
     slip:
       '“You carried the compass, then decided to leave it behind. Sensible.”',
-    chineseSlip: '“你拿起过那只罗盘，最后却把它留在了墓里。很明智。”',
+    chineseSlip: '“你碰过那只罗盘，最后还是把它留在了墓里。挺明智。”',
     thought: 'I never told him I had carried it.',
-    chineseThought: '我从没告诉过他，我曾经拿起过罗盘。',
+    chineseThought: '我没告诉过他，我碰过那只罗盘。',
   },
   'burial-vessel': {
     reaction: 'The shopkeeper taps the clay once and sets it aside.',
-    chineseReaction: '老板在陶土上轻敲一下，便把它放到一旁。',
+    chineseReaction: '老板用指节轻轻敲了敲陶器，又把它推到一旁。',
     quote: '“A cautious choice.”',
-    chineseQuote: '“谨慎的选择。”',
+    chineseQuote: '“选得很稳妥。”',
     slip: '“The crack at the foot has spread since it was put below.”',
-    chineseSlip: '“它被放进墓里以后，底足的裂痕又扩大了。”',
+    chineseSlip: '“它下葬以后，底下这道裂痕又长开了。”',
     thought: 'I never mentioned the crack at its foot.',
-    chineseThought: '我从没提过底足的裂痕。',
+    chineseThought: '我没跟他提过底下那道裂痕。',
   },
   'bronze-mirror': {
     reaction:
       'The shopkeeper covers the bronze face with a piece of cloth.',
-    chineseReaction: '老板用一块布遮住铜镜的镜面。',
+    chineseReaction: '老板拿起一块布，先把铜镜的正面盖住了。',
     quote: '“You noticed the inscription.”',
-    chineseQuote: '“你注意到了那段铭文。”',
+    chineseQuote: '“你看到背后的铭文了。”',
     slip:
       '“At least the final character on the reverse is still legible.”',
-    chineseSlip: '“至少背面铭文的最后一个字还看得清。”',
+    chineseSlip: '“还好，背后铭文的最后一个字还能看清。”',
     thought:
       'I never told him which part of the inscription survived.',
-    chineseThought: '我从没告诉过他，铭文的哪一部分还看得清。',
+    chineseThought: '我没告诉过他，铭文究竟还剩哪一部分。',
   },
   'geomancers-compass': {
     reaction: 'He takes the compass before asking what else you saw.',
-    chineseReaction: '他先拿过罗盘，才问你还在墓里看见了什么。',
+    chineseReaction: '他先把罗盘拿了过去，这才问你还在墓里看见了什么。',
     quote: '“So it was still there.”',
-    chineseQuote: '“原来它还在那里。”',
+    chineseQuote: '“原来……它还在那里。”',
     slip: '“Do not turn the seventh mark toward the door again.”',
-    chineseSlip: '“别再把第七格转向门口。”',
+    chineseSlip: '“下次，别把第七格对着门。”',
     thought: 'Again? I never told him what moved inside the tomb.',
-    chineseThought: '“再”？我从没告诉过他，墓里发生了什么。',
+    chineseThought: '“下次”？我还没告诉他，墓里发生过什么。',
   },
 };
 
@@ -476,7 +476,7 @@ export class AntiqueShopScene extends Phaser.Scene {
       })
       .setOrigin(0, 0);
     const chinese = this.add
-      .text(-137, 28, '与古玩店老板交谈。', {
+      .text(-137, 28, '去找老板，把墓里的事说清楚。', {
         fontFamily: SANS_FONT,
         fontSize: '14px',
         color: UI_STYLE_BOARD.colors.text,
@@ -890,29 +890,29 @@ export class AntiqueShopScene extends Phaser.Scene {
           englishTitle: 'YOU',
           chineseTitle: '你',
           englishText: '“There was a cellar below the coffin room. I found this chart inside.”',
-          chineseText: '“棺室下面还有一层地窖。我在里面找到了这张图。”',
+          chineseText: '“棺室下面还藏着一层地窖。我在那里找到这本册子。”',
         },
         this.shopkeeperBeat(
           '“Put it on the counter. Do not unfold it toward the door.”',
-          '“放到柜台上。别让展开的那一面对着门。”',
+          '“放柜台上。展开的那一面，别朝着门。”',
         ),
         {
           voice: 'appraisal',
           englishTitle: 'THE MYRIAD CHARACTER ATLAS',
           chineseTitle: '《万字藏图》',
           englishText: 'The shopkeeper recognizes the seals before the cloth is fully opened. His hand stops above the first route line.',
-          chineseText: '包布尚未完全揭开，老板已经认出了纸上的印记。他的手停在第一道路线前，没有再碰下去。',
+          chineseText: '包布才揭开一半，老板就认出了纸上的印记。他的手指停在第一条路线上，再没有往前。',
         },
         this.shopkeeperBeat(
           '“This is not a burial object. It is a route index—and this tomb was only its first mark.”',
-          '“这不是陪葬品，是一册路线索引。你刚去的那座墓，只是它标出的第一处。”',
+          '“这不是陪葬品。它是一册路线索引。你刚去的那座墓，只是上面标出的第一处。”',
         ),
         {
           voice: 'thought',
           englishTitle: 'INNER THOUGHT',
           chineseTitle: '内心',
           englishText: 'He knew what it was before I said its name.',
-          chineseText: '我还没说出名字，他就已经知道那是什么。',
+          chineseText: '我连它叫什么都没说，他却已经认出来了。',
         },
       );
     }
@@ -1020,7 +1020,7 @@ export class AntiqueShopScene extends Phaser.Scene {
     this.conversationPanel?.setVisible(false);
     this.configureChoicePanel(
       'HOW DO YOU RESPOND?',
-      '你准备怎么回应？',
+      '要怎么回应？',
       'ASK HOW HE KNEW',
       '追问他怎么知道',
       'LET IT PASS',
@@ -1043,17 +1043,17 @@ export class AntiqueShopScene extends Phaser.Scene {
               englishTitle: 'YOU',
               chineseTitle: '你',
               englishText: '“How did you know that?”',
-              chineseText: '“你怎么会知道这些？”',
+              chineseText: '“你怎么会知道这些事？”',
             },
             this.shopkeeperBeat(
               '“If you need every answer before the second job, you are not ready for it.”',
-              '“如果第二趟之前，你就需要知道所有答案，那你还没准备好。”',
+              '“如果你非要在第二趟之前，把所有事情都问明白……那你还没准备好。”',
             ),
           ]
         : [
             this.shopkeeperBeat(
               '“Good. Knowing when not to ask is useful in this trade.”',
-              '“很好。做这一行，知道什么时候不该问，也是一种本事。”',
+              '“很好。做这一行，知道什么时候不该问，也算一种本事。”',
             ),
           ];
 
@@ -1064,7 +1064,7 @@ export class AntiqueShopScene extends Phaser.Scene {
         englishTitle: 'SHOPKEEPER’S OFFER',
         chineseTitle: '老板报价',
         englishText: `${artifact.englishName}   ${artifact.offerLabel}\nThis is his offer—not its confirmed value.`,
-        chineseText: `${artifact.chineseName}   ${artifact.offerLabel}\n这只是老板的报价，不代表器物已经被确认的真实价值。`,
+        chineseText: `${artifact.chineseName}   ${artifact.offerLabel}\n这只是老板开的价，不代表器物真正的价值。`,
       });
       this.conversationCompletion = 'sale-choice';
     } else {
@@ -1084,7 +1084,7 @@ export class AntiqueShopScene extends Phaser.Scene {
     this.conversationPanel?.setVisible(false);
     this.configureChoicePanel(
       'WHAT WILL YOU DO?',
-      '你准备怎么处理？',
+      '这件器物要怎么处理？',
       'SELL TO THE SHOPKEEPER',
       '卖给老板',
       'KEEP THE RELIC',
@@ -1166,11 +1166,11 @@ export class AntiqueShopScene extends Phaser.Scene {
       this.shopkeeperResponse === 'challenged'
         ? {
             english: '“Come back when you can ask a better question.”',
-            chinese: '“等你想好该问什么，再回来。”',
+            chinese: '“等你想清楚该问什么，再回来。”',
           }
         : {
             english: '“You learn quickly.”',
-            chinese: '“你学得很快。”',
+            chinese: '“学得倒快。”',
           };
     this.resultAttitudeEnglish?.setText(attitude.english);
     this.resultAttitudeChinese?.setText(attitude.chinese);
@@ -1178,7 +1178,7 @@ export class AntiqueShopScene extends Phaser.Scene {
     if (this.outcome === 'returned-empty') {
       this.setResultText(
         'NOTHING TO APPRAISE',
-        '没有可以鉴定的器物',
+        '没有带回可供鉴定的器物',
         '',
         '',
         '',

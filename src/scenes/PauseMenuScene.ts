@@ -262,7 +262,7 @@ export class PauseMenuScene extends Phaser.Scene {
       .text(
         width / 2,
         320,
-        '确定返回主菜单吗？\n未保存的进度将会丢失。',
+        '确定返回主菜单吗？\n当前进度不会保存。',
         {
           fontFamily: SANS_FONT,
           fontSize: '17px',

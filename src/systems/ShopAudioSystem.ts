@@ -18,6 +18,7 @@ export class ShopAudioSystem {
   private noiseBuffer?: AudioBuffer;
   private disposed = false;
   private voices: SpeechSynthesisVoice[] = [];
+  private lastRestorationAt = 0;
 
   constructor() {
     this.refreshVoices();
@@ -67,6 +68,28 @@ export class ShopAudioSystem {
     };
     const [start, end, duration] = tones[cue];
     this.playTone(now, start, end, duration, 0.025, 'sine');
+  }
+
+  playRestorationFriction(tool: 'soft-brush' | 'bamboo-pick' | 'dry-cloth', dirt: string, damaged: boolean): void {
+    this.ensureStarted();
+    if (!this.context || this.context.state !== 'running') return;
+    const now = this.context.currentTime;
+    if (!damaged && now - this.lastRestorationAt < 0.12) return;
+    this.lastRestorationAt = now;
+    if (damaged) {
+      this.playTone(now, tool === 'bamboo-pick' ? 1320 : 610, 220, 0.11, 0.042, 'sawtooth');
+      return;
+    }
+    if (!this.noiseBuffer) return;
+    const source = this.context.createBufferSource(); source.buffer = this.noiseBuffer;
+    const filter = this.context.createBiquadFilter(); filter.type = 'bandpass';
+    filter.frequency.value = tool === 'soft-brush' ? 920 : tool === 'bamboo-pick' ? 1540 : 520;
+    filter.Q.value = dirt === 'hard-corrosion' ? 2.8 : 1.25;
+    const gain = this.context.createGain();
+    gain.gain.setValueAtTime(tool === 'bamboo-pick' ? 0.018 : 0.012, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.065);
+    source.connect(filter).connect(gain).connect(this.context.destination);
+    source.start(now); source.stop(now + 0.075);
   }
 
   speakEnglish(text: string, role: ShopVoiceRole): void {

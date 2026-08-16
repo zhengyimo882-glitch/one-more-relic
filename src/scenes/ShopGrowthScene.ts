@@ -1,6 +1,14 @@
 import Phaser from 'phaser';
 import { DEFAULT_PLAYER_APPEARANCE_ID, isPlayerAppearanceId, type PlayerAppearanceId } from '../data/playerAppearances';
-import { SHOP_RELICS, type RelicDisposition, type ShopRelicDefinition } from '../data/shopRelics';
+import { SHOP_RELICS, type RelicDisposition } from '../data/shopRelics';
+import {
+  RESTORATION_TEXTURES,
+  RESTORATION_TOOLS,
+  calculateRelicValue,
+  preloadRelicRestorationAssets,
+  restorationDefinitionFor,
+  type RestorationToolId,
+} from '../data/relicRestoration';
 import { Player } from '../objects/Player';
 import { ShopProgressSystem, type TombLootRecord, type TombSettlement } from '../systems/ShopProgressSystem';
 import type { GameFlowState } from '../types/GameFlowState';
@@ -23,6 +31,8 @@ import {
 } from './shared/createAntiqueShopInterior';
 import { isPauseButtonPressed, openPauseMenu } from './PauseMenuScene';
 import { ShopAudioSystem } from '../systems/ShopAudioSystem';
+import { RelicCleaningController } from '../systems/RelicCleaningController';
+import { RelicInspectionController } from '../systems/RelicInspectionController';
 import { createShopWorldCue } from '../ui/createShopWorldCue';
 
 const SERIF = VISUAL_THEME.fonts.serif;
@@ -67,10 +77,8 @@ export class ShopGrowthScene extends Phaser.Scene {
   private growthRevealActive = false;
   private carryTransitionActive = false;
   private choiceIndex = 0;
-  private cleaningMethod = 0;
-  private cleaningMarks: Phaser.GameObjects.Arc[] = [];
-  private cleaningStroke = false;
-  private inspectionAngle = 0;
+  private cleaningController?: RelicCleaningController;
+  private inspectionController?: RelicInspectionController;
   private evidenceFound = new Set<string>();
   private inputLockedUntil = 0;
   private interactionKey?: Phaser.Input.Keyboard.Key;
@@ -88,7 +96,10 @@ export class ShopGrowthScene extends Phaser.Scene {
     this.appearanceId = isPlayerAppearanceId(data?.appearanceId) ? data.appearanceId : DEFAULT_PLAYER_APPEARANCE_ID;
   }
 
-  preload(): void { preloadPlayerAvatarAssets(this); preloadShopkeeperAssets(this); preloadAntiqueShopInteriorAssets(this); }
+  preload(): void {
+    preloadPlayerAvatarAssets(this); preloadShopkeeperAssets(this); preloadAntiqueShopInteriorAssets(this);
+    preloadRelicRestorationAssets(this);
+  }
 
   create(): void {
     this.audio = new ShopAudioSystem();
@@ -127,6 +138,8 @@ export class ShopGrowthScene extends Phaser.Scene {
     const up = Boolean(this.upKey && Phaser.Input.Keyboard.JustDown(this.upKey));
     const down = Boolean(this.downKey && Phaser.Input.Keyboard.JustDown(this.downKey));
     if (this.focusMode) {
+      this.cleaningController?.update(this.time.now);
+      this.inspectionController?.update(this.time.now, this.input.activePointer);
       if (escape) { this.closeFocus(); return; }
       this.updateFocusInput(confirm, left, right, up, down);
       return;
@@ -347,7 +360,7 @@ export class ShopGrowthScene extends Phaser.Scene {
         onComplete: () => { this.carryTransitionActive = false; },
       });
     }
-    this.showToast(`拿起：${def.unidentifiedChineseName}。清理台的灯亮了。`);
+    this.showToast(`已拿起${def.unidentifiedChineseName}。清理台的灯亮了。`);
     this.refreshState();
   }
 
@@ -405,88 +418,111 @@ export class ShopGrowthScene extends Phaser.Scene {
   private openCleaning(): void {
     if (!this.selectedLoot) return;
     const def = SHOP_RELICS[this.selectedLoot.definitionId];
+    const restoration = restorationDefinitionFor(this.selectedLoot);
     const layer = this.beginFocus('cleaning', 'Cleaning');
-    this.addFocusHeader(layer, `清理 · ${def.unidentifiedChineseName}`, '拖动鼠标擦拭污损；方法不同，速度和证据损耗也不同。');
-    const tray = this.add.ellipse(640, 420, 500, 290, 0x31251b, 1).setStrokeStyle(2, SHOP_UI.colors.gold, 0.55);
-    const relic = this.createFocusRelic(def, 640, 390, 250);
-    layer.add([tray, relic]);
-    this.cleaningMarks = [];
-    const seed = [[-78,-42],[-22,-67],[48,-54],[84,-10],[-62,28],[2,42],[70,54],[12,-8],[-104,0]];
-    seed.slice(0, Math.max(0, 9 - this.selectedLoot.cleaningProgress)).forEach(([dx, dy], i) => {
-      const mark = this.add.circle(640 + dx, 390 + dy, 24 + (i % 3) * 5, 0x4b3a2b, 0.86).setStrokeStyle(1, 0x20170f, 0.4).setInteractive();
-      this.cleaningMarks.push(mark); layer.add(mark);
+    this.addFocusHeader(layer, `清理 · ${def.unidentifiedChineseName}`, '按住并拖动工具。看清需要的细节后，可以随时停止。');
+    const workbench = this.add.image(452, 382, RESTORATION_TEXTURES.workbench).setDisplaySize(820, 468);
+    const status = this.add.text(60, 142, '', {
+      fontFamily: SANS, fontSize: '15px', color: '#ead7b6', lineSpacing: 6,
     });
-    const methodButtons = def.cleaningMethodsChinese.map((label, i) => this.createChoiceCard(340 + i * 320, 625, 270, 62, label, i, () => { this.cleaningMethod = i; this.refreshCleaningButtons(methodButtons); }));
-    layer.add(methodButtons); this.refreshCleaningButtons(methodButtons);
-    const progress = this.add.text(640, 548, '', { fontFamily: SANS, fontSize: '15px', color: SHOP_UI.colors.text }).setOrigin(0.5);
-    layer.add(progress);
-    const refresh = (): void => {
-      progress.setText(`剩余污损 ${this.cleaningMarks.filter((x) => x.active).length}  ·  证据完整度 ${Math.max(0, 100 - this.selectedLoot!.cleaningDamage)}%`);
-    };
-    refresh();
-    const cleanAt = (pointer: Phaser.Input.Pointer): void => {
-      if (!this.cleaningStroke || !this.selectedLoot) return;
-      const radius = this.cleaningMethod === 0 ? 27 : 52;
-      let removed = 0;
-      this.cleaningMarks.forEach((mark) => {
-        if (mark.active && Phaser.Math.Distance.Between(pointer.x, pointer.y, mark.x, mark.y) < radius) {
-          mark.disableInteractive(); mark.setActive(false);
-          this.tweens.add({ targets: mark, alpha: 0, scale: 0.6, duration: 180, onComplete: () => mark.setVisible(false) });
-          removed += 1;
-        }
-      });
-      if (removed && this.cleaningMethod === 1) this.selectedLoot.cleaningDamage = Math.min(35, this.selectedLoot.cleaningDamage + removed * 7);
-      this.selectedLoot.cleaningProgress = 9 - this.cleaningMarks.filter((x) => x.active).length;
-      refresh();
-      if (this.cleaningMarks.every((x) => !x.active)) {
-        this.selectedLoot.cleaned = true;
-        this.audio?.playSfx('choice-confirm');
-        this.time.delayedCall(350, () => this.openInspection());
-      }
-    };
-    this.input.on('pointerdown', () => { this.cleaningStroke = true; });
-    this.input.on('pointerup', () => { this.cleaningStroke = false; });
-    this.input.on('pointermove', cleanAt);
-  }
+    const warning = this.add.text(60, 186, '', {
+      fontFamily: SERIF, fontSize: '15px', color: '#d7af77', wordWrap: { width: 760 },
+    });
+    layer.add([workbench, status, warning]);
 
-  private refreshCleaningButtons(buttons: Phaser.GameObjects.Container[]): void {
-    buttons.forEach((b, i) => this.styleChoice(b, i === this.cleaningMethod));
+    const updateStatus = (progress: number, damage: number, dirtType = 'loose-dust'): void => {
+      const dirtName = ({ 'loose-dust': '浮尘', 'hard-corrosion': '硬锈', 'surface-film': '污膜', mold: '霉斑' } as Record<string, string>)[dirtType];
+      status.setText(`显露 ${Math.round(progress)}%  ·  保存完整度 ${Math.round(Math.max(0, 100 - damage))}%\n当前触感：${dirtName}`);
+      if (progress > 82 && !warning.text) warning.setText('包浆已经很薄。继续清理不一定会得到更多依据。');
+    };
+    updateStatus(this.selectedLoot.cleaningProgress, this.selectedLoot.cleaningDamage);
+    this.cleaningController = new RelicCleaningController(
+      this, layer, restoration, this.selectedLoot, this.audio, 452, 388,
+      {
+        onChanged: (progress, damage, dirtType) => updateStatus(progress, damage, dirtType),
+        onWarning: (message) => {
+          warning.setText(message).setAlpha(1);
+          this.tweens.add({ targets: warning, alpha: 0.45, duration: 850, yoyo: true });
+        },
+      },
+    );
+
+    const toolIds: RestorationToolId[] = ['soft-brush', 'bamboo-pick', 'dry-cloth'];
+    const toolButtons = toolIds.map((toolId, index) => {
+      const tool = RESTORATION_TOOLS[toolId];
+      const card = this.createChoiceCard(150 + index * 205, 655, 188, 58, `${index + 1}  ${tool.name}\n${tool.shortHint}`, index, () => selectTool(toolId));
+      const icon = this.add.image(-74, 0, tool.texture).setDisplaySize(40, 52);
+      const label = card.getData('label') as Phaser.GameObjects.Text;
+      label.setX(-48).setFontSize('13px').setWordWrapWidth(136);
+      card.add(icon); return card;
+    });
+    const selectTool = (toolId: RestorationToolId): void => {
+      this.cleaningController?.setTool(toolId);
+      toolButtons.forEach((button, index) => this.styleChoice(button, toolIds[index] === toolId));
+      this.audio?.playSfx('choice-move');
+    };
+    layer.add(toolButtons); layer.setData('toolButtons', toolButtons); layer.setData('toolIds', toolIds);
+    selectTool('soft-brush');
+    const stop = this.createChoiceCard(790, 655, 230, 58, '停止清理，转入观察', 0, () => {
+      if (!this.selectedLoot) return;
+      this.selectedLoot.cleaned = true;
+      this.audio?.playSfx('choice-confirm');
+      this.openInspection();
+    });
+    layer.add(stop); this.styleChoice(stop, true);
   }
 
   private openInspection(): void {
     if (!this.selectedLoot) return;
     this.clearFocusOnly();
     const def = SHOP_RELICS[this.selectedLoot.definitionId];
+    const restoration = restorationDefinitionFor(this.selectedLoot);
     const layer = this.beginFocus('inspection', 'Inspection');
-    this.addFocusHeader(layer, `观察 · ${def.unidentifiedChineseName}`, 'A / D 旋转器物，点击发亮部位记录证据。墓中的方位记忆会参与判断。');
-    const relic = this.createFocusRelic(def, 550, 390, 300);
-    layer.add(relic);
-    const evidenceTitle = this.add.text(900, 178, '证据签', { fontFamily: SERIF, fontSize: '22px', color: '#3b291c' }).setOrigin(0.5);
-    const evidenceBody = this.add.text(770, 222, '', { fontFamily: SANS, fontSize: '15px', color: '#463322', wordWrap: { width: 260 }, lineSpacing: 8 });
-    layer.add([this.add.rectangle(900, 370, 330, 410, SHOP_UI.colors.paper, 0.96).setStrokeStyle(1, 0x725437), evidenceTitle, evidenceBody]);
-    this.evidenceFound = new Set(this.selectedLoot.evidenceIds);
-    const hotspotAngles = [-34, 34];
-    const hotspots = def.evidence.map((ev, i) => {
-      const h = this.add.circle(550 + (i ? 82 : -82), 390 + (i ? 35 : -35), 18, SHOP_UI.colors.cinnabar, 0.18).setStrokeStyle(2, SHOP_UI.colors.focus, 0.9).setInteractive({ useHandCursor: true });
-      h.on('pointerup', () => {
-        const target = hotspotAngles[i];
-        if (Math.abs(Phaser.Math.Angle.WrapDegrees(this.inspectionAngle - target)) > 40) { this.showToast('角度还不对，再转一转器物。'); return; }
-        this.evidenceFound.add(ev.id); this.selectedLoot!.evidenceIds = Array.from(this.evidenceFound);
-        h.setFillStyle(SHOP_UI.colors.cinnabar, 0.65); this.audio?.playSfx('interact'); refreshEvidence();
-      });
-      layer.add(h); return h;
+    this.addFocusHeader(layer, `观察 · ${def.unidentifiedChineseName}`, '拖动翻面 · 滚轮缩放 · 拖动工作灯改变侧光 · A / D 切换观察面');
+    const workbench = this.add.image(455, 390, RESTORATION_TEXTURES.workbench).setDisplaySize(820, 470);
+    const hint = this.add.text(870, 140, '不要寻找标记。让角度、距离和侧光把细节显出来。', {
+      fontFamily: SERIF, fontSize: '15px', color: '#f0d7a8', wordWrap: { width: 340, useAdvancedWrap: true }, lineSpacing: 4,
     });
-    const tombEvidence = '墓内记忆：铜钱一面长期朝向供桌空位，磨损方向固定。';
-    const refreshEvidence = (): void => {
-      const found = def.evidence.filter((e) => this.evidenceFound.has(e.id));
-      evidenceBody.setText(`${found.map((e) => `◆ ${e.chineseLabel}\n${e.chineseDetail}`).join('\n\n') || '尚未记录器物证据'}\n\n◇ ${tombEvidence}`);
-      if (found.length === def.evidence.length) {
-        const next = this.createChoiceCard(900, 608, 270, 58, '根据证据作出鉴定', 0, () => this.openAppraisal());
-        layer.add(next); this.styleChoice(next, true);
+    const faceState = this.add.text(60, 145, '', { fontFamily: SANS, fontSize: '14px', color: '#ead7b6' });
+    layer.add([workbench, hint, faceState]);
+    this.evidenceFound = new Set(this.selectedLoot.evidenceIds);
+
+    const notebook = this.add.image(1125, 380, RESTORATION_TEXTURES.notebookClosed).setDisplaySize(150, 178);
+    const notebookTitle = this.add.text(1015, 282, '观察记录', { fontFamily: SERIF, fontSize: '19px', color: '#2d1d14', stroke: '#dfc99f', strokeThickness: 2 }).setVisible(false);
+    const evidenceBody = this.add.text(930, 318, '', {
+      fontFamily: SANS, fontSize: '14px', color: '#2d2018', stroke: '#dfc99f', strokeThickness: 2, wordWrap: { width: 270 }, lineSpacing: 6,
+    }).setVisible(false);
+    layer.add([notebook, notebookTitle, evidenceBody]);
+    let notebookOpened = false;
+    const openNotebook = (): void => {
+      if (!notebookOpened) {
+        notebookOpened = true; notebook.setTexture(RESTORATION_TEXTURES.notebookOpen).setDisplaySize(342, 270).setPosition(1040, 395);
+        notebookTitle.setVisible(true); evidenceBody.setVisible(true);
+        notebook.setAlpha(0).setX(1110); notebookTitle.setAlpha(0); evidenceBody.setAlpha(0);
+        this.tweens.add({ targets: [notebook, notebookTitle, evidenceBody], alpha: 1, duration: 260 });
+        this.tweens.add({ targets: notebook, x: 1040, duration: 320, ease: 'Cubic.Out' });
       }
     };
-    (layer as Phaser.GameObjects.Container & { setData: (k: string, v: unknown) => Phaser.GameObjects.Container }).setData('inspectRelic', relic);
-    hotspots.forEach((h, i) => h.setData('offset', i ? 82 : -82));
+    const refreshEvidence = (): void => {
+      const found = def.evidence.filter((e) => this.evidenceFound.has(e.id));
+      if (found.length) openNotebook();
+      evidenceBody.setText(found.map((e, index) => `${index + 1}. ${e.chineseLabel}\n${e.chineseDetail}`).join('\n\n') || '尚无记录');
+      next.setVisible(found.length >= restoration.minimumEvidenceForAppraisal);
+    };
+    const next = this.createChoiceCard(1040, 620, 270, 58, '根据现有证据鉴定', 0, () => this.openAppraisal()).setVisible(false);
+    layer.add(next); this.styleChoice(next, true);
+    this.inspectionController = new RelicInspectionController(
+      this, layer, restoration, this.selectedLoot, this.audio, 460, 395,
+      {
+        onEvidence: (region) => {
+          this.evidenceFound.add(region.id);
+          hint.setText(region.observation);
+          refreshEvidence();
+        },
+        onHint: (message) => hint.setText(message),
+        onFaceChanged: (face, zoom, lightAngle) => faceState.setText(`${face.label}  ·  放大 ${zoom.toFixed(1)}×  ·  侧光 ${Math.round(lightAngle)}°`),
+      },
+    );
     refreshEvidence();
   }
 
@@ -495,10 +531,11 @@ export class ShopGrowthScene extends Phaser.Scene {
     this.clearFocusOnly();
     const def = SHOP_RELICS[this.selectedLoot.definitionId];
     const layer = this.beginFocus('appraisal', 'AppraisalDecision');
-    this.addFocusHeader(layer, '鉴定结论', `已记录 ${this.evidenceFound.size} 条器物证据，并关联 1 条墓内方位记忆。`);
-    layer.add(this.add.rectangle(360, 390, 490, 430, SHOP_UI.colors.paper, 0.97).setStrokeStyle(1, 0x76583b));
-    layer.add(this.add.text(145, 195, '本次依据', { fontFamily: SERIF, fontSize: '23px', color: '#3a291c' }));
-    layer.add(this.add.text(145, 240, `${def.evidence.map((e) => `◆ ${e.chineseLabel}`).join('\n')}\n◆ 墓中供桌的空位与朝向`, { fontFamily: SANS, fontSize: '16px', color: '#4b3928', lineSpacing: 13 }));
+    const found = def.evidence.filter((e) => this.evidenceFound.has(e.id));
+    this.addFocusHeader(layer, '鉴定结论', `已记录 ${found.length}/${def.evidence.length} 条器物证据。证据不足时也可以判断，但风险会保留。`);
+    layer.add(this.add.image(355, 400, RESTORATION_TEXTURES.notebookOpen).setDisplaySize(540, 430));
+    layer.add(this.add.text(150, 210, '本次依据', { fontFamily: SERIF, fontSize: '23px', color: '#3a291c' }));
+    layer.add(this.add.text(145, 250, `${found.map((e) => `◆ ${e.chineseLabel}`).join('\n') || '◆ 尚未形成可靠器物证据'}\n◆ 墓中记录的方位与摆放关系\n\n保存完整度 ${this.selectedLoot.preservationScore ?? Math.max(0, 100 - this.selectedLoot.cleaningDamage)}%`, { fontFamily: SANS, fontSize: '16px', color: '#4b3928', lineSpacing: 13, wordWrap: { width: 420 } }));
     const cards = def.conclusions.map((c, i) => this.createChoiceCard(870, 285 + i * 145, 470, 105, this.conclusionChinese(def.id, i), i, () => this.confirmAppraisal(i)));
     layer.add(cards); this.choiceIndex = 0; cards.forEach((c, i) => this.styleChoice(c, i === 0));
     layer.setData('choiceCards', cards);
@@ -507,10 +544,13 @@ export class ShopGrowthScene extends Phaser.Scene {
   private confirmAppraisal(index: number): void {
     if (!this.selectedLoot) return;
     const def = SHOP_RELICS[this.selectedLoot.definitionId];
-    const correct = index === def.correctConclusionIndex;
+    const restoration = restorationDefinitionFor(this.selectedLoot);
+    const evidenceComplete = this.evidenceFound.size >= restoration.evidenceRegions.length;
+    const criticalEvidenceIntact = !(this.selectedLoot.destroyedEvidenceIds?.length);
+    const correct = index === def.correctConclusionIndex && evidenceComplete && criticalEvidenceIntact;
     ShopProgressSystem.recordConclusion(this.selectedLoot, index, correct);
     this.audio?.playSfx('choice-confirm');
-    this.showToast(correct ? '朱砂印落下：证据彼此吻合。' : '账本标作“存疑”：证据链不能完全支持该结论，估价下降。');
+    this.showToast(correct ? '朱砂印落下：证据彼此吻合，器物价值上调。' : criticalEvidenceIntact ? '账本标作“存疑”：证据尚未闭合，估价下降。' : '新刮痕破坏了关键旧痕，结论无法坐实，估价下降。');
     if (def.isCore) {
       this.selectedLoot.disposition = 'research';
       this.carriedLoot = this.selectedLoot;
@@ -527,12 +567,15 @@ export class ShopGrowthScene extends Phaser.Scene {
     this.clearFocusOnly();
     const def = SHOP_RELICS[this.selectedLoot.definitionId];
     const layer = this.beginFocus('disposition', 'DispositionDecision');
-    this.addFocusHeader(layer, `决定去向 · ${def.chineseName}`, '选择后需把器物亲自送到店内对应位置，放下时才会结算。');
+    this.addFocusHeader(layer, `决定去向 · ${def.chineseName}`, '选好去向后，把器物送到店内对应位置。放下时完成结算。');
+    const saleValue = calculateRelicValue(this.selectedLoot, def.saleValue);
+    const pledgeValue = Math.max(0, Math.round(def.pledgeValue - this.selectedLoot.cleaningDamage * 1.5 + this.selectedLoot.evidenceIds.length * 8));
+    const preservation = this.selectedLoot.preservationScore ?? Math.round(Math.max(0, 100 - this.selectedLoot.cleaningDamage));
     const choices: { d: RelicDisposition; title: string; body: string }[] = [
-      { d: 'sell', title: `出售  +¥${Math.max(60, def.saleValue - this.selectedLoot.cleaningDamage * 3 - (this.selectedLoot.appraisalCorrect === false ? 45 : 0))}`, body: '放入交货箱；获得现款，失去后续研究与组合机会。' },
-      { d: 'collect', title: '收藏陈列', body: '占用一个展示位置；器物会留在店内，并可能形成关联收藏。' },
-      { d: 'research', title: '留作研究', body: '暂时没有收入；保留未知证据，送往研究盘。' },
-      { d: 'pledge', title: `留作抵押  墓价¥${def.pledgeValue}`, body: '保留器物并承担下次下墓风险，送入抵押柜。' },
+      { d: 'sell', title: `出售  +¥${saleValue}`, body: `损伤、证据完整度与鉴定结果已经计入。保存完整度 ${preservation}%。` },
+      { d: 'collect', title: `收藏陈列  完整度 ${preservation}%`, body: '保留包浆会提高陈列价值；过度清理与新伤会永久留在器物上。' },
+      { d: 'research', title: `留作研究  证据 ${this.selectedLoot.evidenceIds.length}/${def.evidence.length}`, body: '暂时没有收入。器物会保留当前污层、损伤和未确认线索。' },
+      { d: 'pledge', title: `留作抵押  墓价¥${pledgeValue}`, body: '抵押估值同样受清理损伤和证据数量影响。' },
     ];
     const cards = choices.map((c, i) => this.createChoiceCard(365 + (i % 2) * 550, 285 + Math.floor(i / 2) * 190, 490, 145, `${c.title}\n${c.body}`, i, () => this.selectDisposition(c.d)));
     layer.add(cards); this.choiceIndex = 0; cards.forEach((c, i) => this.styleChoice(c, i === 0)); layer.setData('choiceCards', cards); layer.setData('dispositions', choices.map((x) => x.d));
@@ -546,7 +589,7 @@ export class ShopGrowthScene extends Phaser.Scene {
     this.carriedVisual = this.createCarryRelic(this.selectedLoot);
     this.player?.setCarrying(true);
     this.player?.playCarryAction('pickup');
-    this.showToast(`已在账本夹签：${this.destinationName(disposition)}。结算将在放下器物时生效。`);
+    this.showToast(`账本已夹签：${this.destinationName(disposition)}。把器物送到对应位置，放下后完成结算。`);
     this.updateObjective();
   }
 
@@ -557,8 +600,7 @@ export class ShopGrowthScene extends Phaser.Scene {
       this.carryTransitionActive
     ) return;
     const loot = this.carriedLoot; const def = SHOP_RELICS[loot.definitionId];
-    const appraisalPenalty = loot.appraisalCorrect === false ? 45 : 0;
-    const value = Math.max(60, def.saleValue - loot.cleaningDamage * 3 - appraisalPenalty);
+    const value = calculateRelicValue(loot, def.saleValue);
     const station = this.stations.get(disposition)!;
     this.carryTransitionActive = true;
     this.player?.setMovementEnabled(false);
@@ -570,7 +612,7 @@ export class ShopGrowthScene extends Phaser.Scene {
       this.carriedVisual?.destroy(); this.carriedVisual = undefined;
       if (disposition !== 'sell') this.showPlacedRelic(loot, station.x, station.y - 32);
       this.audio?.playSfx('place-relic');
-      this.showToast(disposition === 'sell' ? `交货完成，账本记入 ¥${value}。` : `${def.chineseName}已放入${this.destinationName(disposition)}，店内陈列永久改变。`);
+      this.showToast(disposition === 'sell' ? `已完成交货，账本记入 ¥${value}。` : `${def.chineseName}已放入${this.destinationName(disposition)}。店内陈列发生了永久变化。`);
       this.carriedLoot = undefined; this.selectedLoot = undefined;
       this.carryTransitionActive = false;
       this.player?.setMovementEnabled(true);
@@ -599,11 +641,11 @@ export class ShopGrowthScene extends Phaser.Scene {
   private openAtlas(): void {
     const p = ShopProgressSystem.getProgress();
     const layer = this.beginFocus('atlas', 'AtlasEvent');
-    this.addFocusHeader(layer, '《万字藏图》', '墨迹并非地图的终点，而是在店内寻找自己的位置。');
+    this.addFocusHeader(layer, '《万字藏图》', '这些墨迹指向的不是下一座墓，而是店里的某个位置。');
     const page = this.add.rectangle(640, 400, 720, 480, SHOP_UI.colors.paper, 1).setStrokeStyle(2, 0x5f432c);
     const ink = this.add.graphics(); ink.lineStyle(5, 0x3d2b1e, 0.8).strokeRect(410, 235, 460, 300).lineBetween(560, 235, 560, 535).lineBetween(720, 235, 720, 535).strokeCircle(790, 390, 38);
     const mark = this.add.circle(790, 390, 12, SHOP_UI.colors.cinnabar, 0.9);
-    layer.add([page, ink, mark, this.add.text(640, 565, p.atlasPage === 0 ? '第一页正在显影……展示柜的位置与前室壁龛重合。' : '第一页：店铺局部平面。朱砂标记仍指向展示柜。', { fontFamily: SERIF, fontSize: '18px', color: '#38271b' }).setOrigin(0.5)]);
+    layer.add([page, ink, mark, this.add.text(640, 565, p.atlasPage === 0 ? '第一页正在显字……图上的展示柜，恰好压在前室壁龛的位置上。' : '第一页画着店铺的一角。朱砂标记，仍然指向那座展示柜。', { fontFamily: SERIF, fontSize: '18px', color: '#38271b' }).setOrigin(0.5)]);
     if (p.atlasPage === 0) {
       ink.setAlpha(0); mark.setAlpha(0);
       this.tweens.add({ targets: ink, alpha: 1, duration: 1500, onComplete: () => this.tweens.add({ targets: mark, alpha: 1, scale: { from: 1.8, to: 1 }, duration: 450, onComplete: () => {
@@ -657,7 +699,7 @@ export class ShopGrowthScene extends Phaser.Scene {
             this.growthRevealActive = false;
             this.player?.setMovementEnabled(true);
             this.cameras.main.pan(640, 360, 450, Phaser.Math.Easing.Sine.InOut);
-            this.showToast('布罩滑落，铜角与玻璃依次亮起。柜格的比例，像极了墓室壁龛。');
+            this.showToast('防尘布滑落，铜角和玻璃一一露了出来。柜格的比例，和墓室壁龛几乎一样。');
             this.refreshState();
           },
         });
@@ -668,11 +710,19 @@ export class ShopGrowthScene extends Phaser.Scene {
   private updateFocusInput(confirm: boolean, left: boolean, right: boolean, up: boolean, down: boolean): void {
     if (!this.focusLayer || !this.focusMode) return;
     if (this.focusMode === 'inspection' && (left || right)) {
-      this.inspectionAngle = Phaser.Math.Wrap(this.inspectionAngle + (right ? 34 : -34), -180, 180);
-      const relic = this.focusLayer.getData('inspectRelic') as Phaser.GameObjects.Container | undefined;
-      relic?.setAngle(this.inspectionAngle); this.audio?.playSfx('choice-move'); return;
+      this.inspectionController?.nextFace(right ? 1 : -1); return;
     }
-    if (this.focusMode === 'cleaning' && (left || right)) { this.cleaningMethod = this.cleaningMethod ? 0 : 1; return; }
+    if (this.focusMode === 'cleaning' && (left || right)) {
+      const ids = this.focusLayer.getData('toolIds') as RestorationToolId[] | undefined;
+      const buttons = this.focusLayer.getData('toolButtons') as Phaser.GameObjects.Container[] | undefined;
+      if (ids && buttons && this.cleaningController) {
+        const current = ids.indexOf(this.cleaningController.getTool());
+        const next = Phaser.Math.Wrap(current + (right ? 1 : -1), 0, ids.length);
+        this.cleaningController.setTool(ids[next]);
+        buttons.forEach((button, index) => this.styleChoice(button, index === next));
+      }
+      return;
+    }
     const cards = this.focusLayer.getData('choiceCards') as Phaser.GameObjects.Container[] | undefined;
     if (!cards) return;
     if (left || right || up || down) {
@@ -707,18 +757,9 @@ export class ShopGrowthScene extends Phaser.Scene {
   }
 
   private clearFocusOnly(): void {
-    this.input.off('pointerdown'); this.input.off('pointerup'); this.input.off('pointermove');
-    this.cleaningStroke = false; this.focusLayer?.destroy(true); this.focusLayer = undefined; this.focusMode = undefined;
-  }
-
-  private createFocusRelic(def: ShopRelicDefinition, x: number, y: number, size: number): Phaser.GameObjects.Container {
-    const g = this.add.graphics();
-    if (def.id === 'first-tomb-ritual-coin') {
-      g.fillStyle(0x87633e).fillCircle(0, 0, size * 0.32); g.lineStyle(6, 0xb58b56).strokeCircle(0, 0, size * 0.32); g.fillStyle(0x211812).fillRect(-size * 0.07, -size * 0.07, size * 0.14, size * 0.14);
-    } else {
-      g.fillStyle(0xc7b487).fillRoundedRect(-size * 0.36, -size * 0.28, size * 0.72, size * 0.56, 6); g.lineStyle(3, 0x65503a).strokeRoundedRect(-size * 0.36, -size * 0.28, size * 0.72, size * 0.56, 6); g.lineBetween(0, -size * 0.27, 0, size * 0.27);
-    }
-    return this.add.container(x, y, [g]);
+    this.cleaningController?.destroy(); this.cleaningController = undefined;
+    this.inspectionController?.destroy(); this.inspectionController = undefined;
+    this.focusLayer?.destroy(true); this.focusLayer = undefined; this.focusMode = undefined;
   }
 
   private createChoiceCard(x: number, y: number, w: number, h: number, label: string, index: number, action: () => void): Phaser.GameObjects.Container {
@@ -726,8 +767,27 @@ export class ShopGrowthScene extends Phaser.Scene {
     const text = this.add.text(-w / 2 + 20, 0, label, { fontFamily: SANS, fontSize: '16px', color: SHOP_UI.colors.text, wordWrap: { width: w - 40 }, lineSpacing: 5 }).setOrigin(0, 0.5);
     const card = this.add.container(x, y, [bg, text]).setSize(w, h).setInteractive({ useHandCursor: true });
     card.setData('bg', bg); card.setData('label', text); card.setData('index', index);
-    card.on('pointerover', () => { this.choiceIndex = index; const siblings = this.focusLayer?.getData('choiceCards') as Phaser.GameObjects.Container[] | undefined; siblings?.forEach((c, i) => this.styleChoice(c, i === index)); });
-    card.on('pointerup', action); return card;
+    card.on('pointerover', () => {
+      this.choiceIndex = index;
+      const siblings = this.focusLayer?.getData('choiceCards') as Phaser.GameObjects.Container[] | undefined;
+      siblings?.forEach((c, i) => this.styleChoice(c, i === index));
+      if (!siblings) {
+        drawStyleBoardButton(bg, w, h, 'hover', 'primary');
+        text.setColor(styleBoardButtonTextColor('hover'));
+      }
+    });
+    card.on('pointerdown', () => {
+      drawStyleBoardButton(bg, w, h, 'pressed', 'primary');
+      text.setColor(styleBoardButtonTextColor('pressed'));
+      card.setScale(0.985);
+    });
+    card.on('pointerup', () => {
+      card.setScale(1); this.styleChoice(card, true); action();
+    });
+    card.on('pointerout', () => {
+      card.setScale(1); this.styleChoice(card, this.choiceIndex === index);
+    });
+    return card;
   }
 
   private styleChoice(card: Phaser.GameObjects.Container, selected: boolean): void {
@@ -738,11 +798,11 @@ export class ShopGrowthScene extends Phaser.Scene {
   }
 
   private createCarryRelic(loot: TombLootRecord): Phaser.GameObjects.Image {
-    const texture = loot.definitionId === 'first-tomb-ritual-coin' ? SHOP_INTERIOR_TEXTURES.geomancersCompass : SHOP_INTERIOR_TEXTURES.brassTally;
+    const texture = restorationDefinitionFor(loot).inspectionFaces[0].cleanTexture;
     const target = this.getHeldRelicTarget();
     const image = this.add
       .image(target.x, target.y, texture)
-      .setDisplaySize(40, 40)
+      .setDisplaySize(loot.definitionId === 'first-tomb-ritual-coin' ? 40 : 38, loot.definitionId === 'first-tomb-ritual-coin' ? 40 : 48)
       .setDepth(target.depth);
     image.setData('heldScaleX', image.scaleX);
     image.setData('heldScaleY', image.scaleY);
@@ -809,18 +869,20 @@ export class ShopGrowthScene extends Phaser.Scene {
   }
 
   private showPlacedRelic(loot: TombLootRecord, x: number, y: number): void {
-    const texture = loot.definitionId === 'first-tomb-ritual-coin' ? SHOP_INTERIOR_TEXTURES.geomancersCompass : SHOP_INTERIOR_TEXTURES.brassTally;
-    this.displayVisual = this.add.image(x, y, texture).setDisplaySize(44, 44).setDepth(3.8);
+    const texture = restorationDefinitionFor(loot).inspectionFaces[0].cleanTexture;
+    this.displayVisual = this.add.image(x, y, texture)
+      .setDisplaySize(loot.definitionId === 'first-tomb-ritual-coin' ? 48 : 54, loot.definitionId === 'first-tomb-ritual-coin' ? 48 : 64)
+      .setDepth(3.8);
   }
 
   private updateObjective(): void {
     const p = ShopProgressSystem.getProgress();
-    let text = '在店里走走，查看发生变化的陈列。';
-    if (this.carriedLoot?.disposition) text = `把器物送到${this.destinationName(this.carriedLoot.disposition)}。`;
-    else if (this.carriedLoot) text = '把手中的器物放到清理台。';
-    else if (p.activeLoot.some((x) => !x.placed)) text = '到待处理桌拿起一件器物。';
-    else if (p.atlasPage === 0) text = '查看工作台上自行显墨的《万字藏图》。';
-    else if (this.growthCurtain?.visible) text = '揭开新展示柜的防尘布。';
+    let text = '在店里转一圈，看看陈列有什么变化。';
+    if (this.carriedLoot?.disposition) text = `把器物放到${this.destinationName(this.carriedLoot.disposition)}。`;
+    else if (this.carriedLoot) text = '把手里的器物送到清理台。';
+    else if (p.activeLoot.some((x) => !x.placed)) text = '去待处理桌拿一件器物。';
+    else if (p.atlasPage === 0) text = '去看看工作台上正在自行显字的《万字藏图》。';
+    else if (this.growthCurtain?.visible) text = '去揭开新展示柜上的防尘布。';
     this.objectiveText?.setText(text);
   }
 

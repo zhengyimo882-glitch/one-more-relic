@@ -44,12 +44,12 @@ export const SHOP_RELICS: Record<string, ShopRelicDefinition> = {
       {
         id: 'blank-fibres', label: 'Blank fibres', chineseLabel: '空白纸纤维',
         detail: 'The paper is old, but no ink has soaked through it.',
-        chineseDetail: '纸张年代久远，却没有任何墨迹渗透。',
+        chineseDetail: '纸张已经发脆，却看不见半点墨迹渗入纤维。',
       },
       {
         id: 'folded-map-seam', label: 'Folded map seam', chineseLabel: '地图折痕',
         detail: 'Its fold matches the cloth tucked beneath the compass.',
-        chineseDetail: '折痕与罗盘下夹着的包布完全吻合。',
+        chineseDetail: '这道折痕，与罗盘下那层包布的折线完全重合。',
       },
     ],
     conclusions: ['An unused account book', 'A ritual map awaiting a trigger'],
@@ -71,12 +71,12 @@ export const SHOP_RELICS: Record<string, ShopRelicDefinition> = {
       {
         id: 'offering-dust', label: 'Offering-table dust', chineseLabel: '供桌积灰',
         detail: 'Dust in the square hole matches the clean ring left by the restored offering.',
-        chineseDetail: '方孔中的积灰与归位供物留下的净圈一致。',
+        chineseDetail: '方孔里的积灰，与供物归位后露出的净圈正好吻合。',
       },
       {
         id: 'ritual-facing', label: 'Ritual-facing wear', chineseLabel: '仪式朝向磨损',
         detail: 'One face was repeatedly turned toward the empty place on the offering table.',
-        chineseDetail: '其中一面长期朝向供桌空位，磨损方向固定。',
+        chineseDetail: '铜钱的一面磨损更重，长期朝向供桌上的那个空位。',
       },
     ],
     conclusions: ['Common circulation coin', 'Position marker from the offering arrangement'],

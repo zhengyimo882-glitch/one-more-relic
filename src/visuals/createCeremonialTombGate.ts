@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import type { TombPointLight } from '../types/TombLighting';
 
 export const CEREMONIAL_GATE_TEXTURES = {
   closed: 'original-tomb-gate-closed',
@@ -19,6 +20,7 @@ export interface CeremonialTombGate {
   close(duration?: number, onComplete?: () => void): void;
   setGhostFireLit(lit: boolean): void;
   isGhostFireLit(): boolean;
+  getPointLights(): readonly TombPointLight[];
   update(time: number): void;
   destroy(): void;
 }
@@ -32,10 +34,12 @@ type GhostFireSprite = {
   baseScaleY: number;
 };
 
-const GATE_DISPLAY_WIDTH = 440;
-const GATE_ORIGIN_Y = 0.70;
-const GATE_ART_OFFSET_Y = 120;
-const FIRE_DISPLAY_HEIGHT = 96;
+const GATE_DISPLAY_WIDTH = 288;
+const GATE_DISPLAY_HEIGHT = GATE_DISPLAY_WIDTH * (280 / 512);
+const GATE_ART_OFFSET_Y = 0;
+const FIRE_OFFSET_X = 112;
+const FIRE_BASE_Y = -12;
+const FIRE_DISPLAY_HEIGHT = 64;
 
 export function createCeremonialTombGate(
   scene: Phaser.Scene,
@@ -44,22 +48,34 @@ export function createCeremonialTombGate(
 ): CeremonialTombGate {
   const closedGate = scene.add
     .image(0, GATE_ART_OFFSET_Y, CEREMONIAL_GATE_TEXTURES.closed)
-    .setOrigin(0.5, GATE_ORIGIN_Y)
-    .setDisplaySize(GATE_DISPLAY_WIDTH, GATE_DISPLAY_WIDTH * (808 / 960));
+    .setOrigin(0.5)
+    .setDisplaySize(GATE_DISPLAY_WIDTH, GATE_DISPLAY_HEIGHT);
   const openGate = scene.add
     .image(0, GATE_ART_OFFSET_Y, CEREMONIAL_GATE_TEXTURES.open)
-    .setOrigin(0.5, GATE_ORIGIN_Y)
-    .setDisplaySize(GATE_DISPLAY_WIDTH, GATE_DISPLAY_WIDTH * (808 / 960))
+    .setOrigin(0.5)
+    .setDisplaySize(GATE_DISPLAY_WIDTH, GATE_DISPLAY_HEIGHT)
     .setAlpha(0);
 
-  // The artwork itself is a bespoke raster asset. The container remains the
-  // stable world anchor used by the existing collision and reveal sequence.
+  // The low horizontal artwork shares the map's high-angle perspective. Its
+  // stable center remains the existing collision and reveal-sequence anchor.
   const container = scene.add
     .container(worldX, worldY, [closedGate, openGate])
-    .setDepth(7.03);
+    .setDepth(2.93);
 
-  const leftFire = createGhostFire(scene, worldX - 126, worldY + 73, 0.35, -1);
-  const rightFire = createGhostFire(scene, worldX + 126, worldY + 73, 1.9, 1);
+  const leftFire = createGhostFire(
+    scene,
+    worldX - FIRE_OFFSET_X,
+    worldY + FIRE_BASE_Y,
+    0.35,
+    -1,
+  );
+  const rightFire = createGhostFire(
+    scene,
+    worldX + FIRE_OFFSET_X,
+    worldY + FIRE_BASE_Y,
+    1.9,
+    1,
+  );
   const fireLayer = scene.add
     .container(0, 0, [
       leftFire.emissive,
@@ -67,7 +83,7 @@ export function createCeremonialTombGate(
       leftFire.flame,
       rightFire.flame,
     ])
-    .setDepth(7.14);
+    .setDepth(2.98);
 
   let state: CeremonialGateState = 'closed';
   let gateTweens: Phaser.Tweens.Tween[] = [];
@@ -175,6 +191,22 @@ export function createCeremonialTombGate(
     close,
     setGhostFireLit,
     isGhostFireLit: () => requestedFireLit,
+    getPointLights: () => [
+      {
+        x: worldX - FIRE_OFFSET_X,
+        y: worldY + FIRE_BASE_Y - 28,
+        radius: 154,
+        intensity: fireLevel.value * (0.78 + Math.sin(scene.time.now / 112) * 0.06),
+        color: 0x55bfe8,
+      },
+      {
+        x: worldX + FIRE_OFFSET_X,
+        y: worldY + FIRE_BASE_Y - 28,
+        radius: 154,
+        intensity: fireLevel.value * (0.78 + Math.sin(scene.time.now / 126 + 1.4) * 0.06),
+        color: 0x55bfe8,
+      },
+    ],
     update,
     destroy,
   };

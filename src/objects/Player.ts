@@ -214,6 +214,10 @@ export class Player extends Phaser.GameObjects.Container {
     this.avatarVisual.playAction(action);
   }
 
+  playCandleLightingAction(): void {
+    this.avatarVisual.playAction('light-candle');
+  }
+
   getFlashlightMountWorld(angleRadians: number): Phaser.Math.Vector2 {
     const forward = TOMB_FEEL.player.flashlightForwardOffset;
     const lateral = TOMB_FEEL.player.flashlightMountOffsetX;

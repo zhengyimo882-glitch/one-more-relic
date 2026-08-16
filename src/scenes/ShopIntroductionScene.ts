@@ -74,157 +74,157 @@ interface DialogueBeat {
 const OPENING_BEATS: DialogueBeat[] = [
   narrator(
     'You place the chipped brass tally on the counter.',
-    '你把那块缺角的铜牌放在柜台上。',
+    '你把那块缺角的旧铜牌放上柜台。',
   ),
   shopkeeper(
     '“Close the door. The damp gets into old wood.”',
-    '“把门关上。潮气容易进木头。”',
+    '“门带上。夜里潮，木头受不住。”',
   ),
-  shopkeeper('“Where did you get this?”', '“这东西，你从哪儿弄来的？”'),
-  you('“A street stall. Years ago.”', '“很多年前，在旧货摊上买的。”'),
+  shopkeeper('“Where did you get this?”', '“这东西……你从哪儿弄来的？”'),
+  you('“A street stall. Years ago.”', '“很多年前，从旧货摊上买的。”'),
   shopkeeper(
     '“And you waited until tonight to sell it.”',
-    '“却一直等到今晚，才拿来卖。”',
+    '“买了这么多年，偏偏今晚才想起拿来卖。”',
   ),
-  you('“Is it worth anything?”', '“它值钱吗？”'),
-  shopkeeper('“The brass? No.”', '“这点铜？不值钱。”'),
+  you('“Is it worth anything?”', '“它值多少钱？”'),
+  shopkeeper('“The brass? No.”', '“就这点铜？不值几个钱。”'),
   shopkeeper(
     '“The fact that it came back here? Perhaps.”',
-    '“但它重新回到这里这件事……或许值钱。”',
+    '“不过，它还能回到这里……倒有点意思。”',
   ),
   narrator(
     'The broken edge fits the shape recorded in the ledger.',
-    '铜牌缺失的边缘，与账簿上的旧印记完全吻合。',
+    '铜牌缺损的边缘，正好嵌进账簿上的旧印记。',
   ),
   shopkeeper(
     '“It was an inventory tally from this shop.”',
-    '“这是这家店以前使用的货牌。”',
+    '“这是这家店以前用过的货牌。”',
   ),
   shopkeeper(
     '“It disappeared with something that belonged to me.”',
-    '“它和另一件属于我的东西一起失踪了。”',
+    '“当年，它和另一件东西一起丢了。那件东西，也是我的。”',
   ),
-  you('“Then take it back.”', '“那就还给你。”'),
+  you('“Then take it back.”', '“那还给你。”'),
   shopkeeper(
     '“I do not pay for what is already mine.”',
-    '“本来就属于我的东西，我不会再花钱买一次。”',
+    '“本来就是我的东西，我不会再掏钱买一遍。”',
   ),
   shopkeeper(
     '“But I do pay for retrieval.”',
-    '“不过，我会花钱请人把东西取回来。”',
+    '“不过，我可以花钱，请人替我把另一件东西取回来。”',
   ),
-  you('“From where?”', '“去哪里取？”'),
+  you('“From where?”', '“去哪儿取？”'),
   shopkeeper(
     '“An abandoned storehouse outside the city.”',
-    '“城外的一处废弃仓房。”',
+    '“城外。有间废弃的仓房。”',
   ),
   shopkeeper(
     '“The entrance has partly collapsed. No one uses it now.”',
-    '“入口塌了一部分，现在已经没人使用。”',
+    '“入口塌了一半，早就没人用了。”',
   ),
-  you('“What am I bringing back?”', '“我要带回什么？”'),
+  you('“What am I bringing back?”', '“我要找什么？”'),
   shopkeeper(
     '“A brass geomancer’s compass. About the width of your palm.”',
-    '“一只黄铜风水罗盘，大概有手掌这么宽。”',
+    '“一只黄铜风水罗盘。差不多巴掌大。”',
   ),
   shopkeeper(
     '“Do not clean it. Do not force the inner ring.”',
-    '“不要擦洗，也不要强行转动里面的盘。”',
+    '“别擦，也别硬转里面的盘。”',
   ),
-  you('“Why ask me?”', '“为什么找我？”'),
+  you('“Why ask me?”', '“为什么找我去？”'),
   shopkeeper(
     '“Because you came here for cash, not a story.”',
-    '“因为你来这里是为了钱，不是为了听故事。”',
+    '“因为你来这里是为了钱，不是为了听我讲故事。”',
   ),
   shopkeeper(
     '“And because you did not polish the tally before bringing it in.”',
-    '“也因为你没有在拿来之前，把这块铜牌擦得锃亮。”',
+    '“还有，你拿来之前，没有把这块牌子擦得锃亮。”',
   ),
-  you('“You think that makes me qualified?”', '“这就算有资格了？”'),
+  you('“You think that makes me qualified?”', '“这样就算合格？”'),
   shopkeeper(
     '“It makes you less likely to ruin what you touch.”',
-    '“至少说明你不会随便毁掉碰过的东西。”',
+    '“至少说明，你不会随手毁掉自己看不懂的东西。”',
   ),
 ];
 
 const PAYMENT_BEATS: DialogueBeat[] = [
-  you('“How much will you pay?”', '“你准备付多少钱？”'),
+  you('“How much will you pay?”', '“你打算付多少？”'),
   shopkeeper(
     '“Enough to stop counting your rent for a while.”',
-    '“至少能让你暂时不用每天算着房租过日子。”',
+    '“够你先把眼前的房租付了。”',
   ),
   shopkeeper(
     '“More, if you bring back the correct object.”',
-    '“如果带回来的是我要的东西，还会更多。”',
+    '“带回来的要真是我要的东西，还会更多。”',
   ),
-  narrator('I had never mentioned the rent.', '我从没和他提过房租。'),
+  narrator('I had never mentioned the rent.', '我没跟他提过房租。'),
 ];
 
 const WHY_BEATS: DialogueBeat[] = [
   you(
     '“Why don’t you retrieve it yourself?”',
-    '“你为什么不自己去取？”',
+    '“你为什么不自己去？”',
   ),
-  shopkeeper('“Old injuries. Narrow steps.”', '“旧伤。路也窄。”'),
+  shopkeeper('“Old injuries. Narrow steps.”', '“腿上有旧伤。那条路，也太窄。”'),
   shopkeeper(
     '“Choose whichever part of that answer lets you sleep.”',
-    '“你愿意相信哪一部分，就相信哪一部分。”',
+    '“你愿意信哪一句，就信哪一句。”',
   ),
 ];
 
 const TOOL_BEATS: DialogueBeat[] = [
   narrator(
     'He places a canvas bag and a hand-drawn route on the counter.',
-    '老板把一只帆布包和一张手绘路线放在柜台上。',
+    '老板把一只帆布包和一张手绘路线推到柜台前。',
   ),
-  you('“This is the address?”', '“这就是地址？”'),
+  you('“This is the address?”', '“这也算地址？”'),
   shopkeeper(
     '“It is enough, if you follow my marks.”',
-    '“沿着我留下的标记走，这些就够了。”',
+    '“沿着我留下的标记走。找得到的。”',
   ),
   you(
     '“And if I find something else inside?”',
-    '“如果我在里面发现了别的东西呢？”',
+    '“要是里面还有别的东西呢？”',
   ),
   shopkeeper(
     '“I asked you to retrieve one object.”',
-    '“我只让你取回一件东西。”',
+    '“我只让你带回一件东西。”',
   ),
   shopkeeper(
     '“What you choose to touch after that is your concern.”',
-    '“至于之后还要碰什么，那是你自己的事。”',
+    '“至于你还要碰什么……那是你自己的事。”',
   ),
-  shopkeeper('“One rule.”', '“一条规矩。”'),
+  shopkeeper('“One rule.”', '“记住一条规矩。”'),
   shopkeeper(
     '“If you decide to leave, leave.”',
-    '“如果你已经决定离开，就直接离开。”',
+    '“真决定走了，就一直往外走。”',
   ),
   shopkeeper(
     '“Do not turn back for one more thing.”',
-    '“不要为了再拿一件东西回头。”',
+    '“别走到一半，又为了多拿一件东西回头。”',
   ),
 ];
 
 const ROUTE_REVIEW_BEATS: DialogueBeat[] = [
   narrator(
     'The hand-drawn route names no street. It marks only turns beyond the city and a partly collapsed entrance.',
-    '手绘路线没有写街名，只标出了城外的转弯和一处部分坍塌的入口。',
+    '路线上没有地名，只有几个城外的转弯，以及一处塌了一半的入口。',
   ),
   shopkeeper(
     '“Follow the marks. Bring back the brass geomancer’s compass.”',
-    '“沿着标记走。把黄铜风水罗盘带回来。”',
+    '“沿着标记走，把那只黄铜罗盘带回来。”',
   ),
 ];
 
 const ACCEPT_BEATS: DialogueBeat[] = [
   you(
     '“All right. I’ll retrieve your compass.”',
-    '“好。我去把你的罗盘带回来。”',
+    '“好。我把罗盘带回来。”',
   ),
-  shopkeeper('“Bring the bag back as well.”', '“包也要带回来。”'),
+  shopkeeper('“Bring the bag back as well.”', '“包也别丢了。”'),
   shopkeeper(
     '“Tools have a habit of finding new owners.”',
-    '“工具这种东西，很容易换主人。”',
+    '“工具这东西，一不留神，就会换主人。”',
   ),
 ];
 
@@ -467,7 +467,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
           color: UI_STYLE_BOARD.colors.textBright,
           wordWrap: { width: 264 },
         }),
-        this.add.text(-132, 27, '把铜牌交给古玩店老板。', {
+        this.add.text(-132, 27, '把铜牌交给老板。', {
           fontFamily: SERIF_FONT,
           fontSize: '13px',
           color: UI_STYLE_BOARD.colors.text,
@@ -875,9 +875,9 @@ export class ShopIntroductionScene extends Phaser.Scene {
     this.dialoguePanel?.setVisible(false);
     this.configureChoicePanel(
       'WHAT DO YOU ASK FIRST?',
-      '你准备先问什么？',
+      '先问哪件事？',
       [
-        ['HOW MUCH WILL YOU PAY?', '你准备付多少钱？'],
+        ['HOW MUCH WILL YOU PAY?', '价钱怎么算？'],
         ['WHY DON’T YOU GO YOURSELF?', '你为什么不自己去？'],
       ],
     );
@@ -889,7 +889,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
     this.dialoguePanel?.setVisible(false);
     this.configureChoicePanel(
       'WILL YOU TAKE THE JOB?',
-      '你要接下这份差事吗？',
+      '要接下这份差事吗？',
       [
         ['TAKE THE JOB', '接下差事'],
         ['ASK TO SEE THE ROUTE AGAIN', '再看看路线'],

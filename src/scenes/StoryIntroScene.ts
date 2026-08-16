@@ -17,19 +17,19 @@ const STORY_ACTS: readonly StoryAct[] = [
     english:
       'The company let me go on Monday.\nBy Friday, I had begun putting prices on everything I could live without.',
     chinese:
-      '周一，公司辞退了我。\n到了周五，我开始给所有并非必需的东西标价。',
+      '周一，我被公司辞退了。\n到了周五，家里凡是还能卖的东西，我都标上了价。',
   },
   {
     english:
       'At the bottom of the last box was a chipped brass tally.\nThe stallholder had once called it worthless. Tonight, I needed him to have been wrong.',
     chinese:
-      '最后一个箱子的底部，放着一块缺角的旧铜牌。\n当年的摊主说它不值钱。但今晚，我需要他说错了。',
+      '翻到最后一个箱子时，我在箱底摸到一块缺角的旧铜牌。\n当年卖给我的摊主说，它不值钱。可今晚，我只能希望他看走了眼。',
   },
   {
     english:
       'Its faded mark matched a sign on a street waiting to be demolished.\nOnly one door was still lit.',
     chinese:
-      '铜牌上褪色的印记，与一条待拆老街上的招牌完全相同。\n整条街上，只有那扇门还亮着灯。',
+      '铜牌上的印记已经褪色，却和待拆老街上的那块招牌一模一样。\n整条街都黑着，只有那家店还亮着灯。',
   },
 ] as const;
 

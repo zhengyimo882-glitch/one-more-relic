@@ -217,8 +217,14 @@ export function createStyleBoardPrompt(
       fontFamily: UI_STYLE_BOARD.fonts.sans,
       fontSize: '14px',
       color: UI_STYLE_BOARD.colors.text,
+      wordWrap: { width: width - 60 },
+      maxLines: 2,
+      lineSpacing: -3,
     })
     .setOrigin(0, 0.5);
+  if (text.displayWidth > width - 60) {
+    text.setFontSize(12);
+  }
   return scene.add.container(0, 0, [background, keycap, text]).setData('label', text);
 }
 
