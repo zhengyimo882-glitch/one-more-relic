@@ -7,6 +7,11 @@ export const CORRIDOR_MURAL_TEXTURES = {
   rightLower: 'original-corridor-mural-right-lower',
 } as const;
 
+export const MURAL_DISCOVERY_UI_TEXTURES = {
+  chrome: 'mural-discovery-environmental-chrome',
+  wallMarkerFrame: 'mural-wall-marker-crop',
+} as const;
+
 export interface TombCorridorMurals {
   update(
     visibilityResolver: (worldX: number, worldY: number) => boolean,
@@ -71,10 +76,13 @@ export function createTombCorridorMurals(
       for (const panel of panels) {
         const visible = visibilityResolver(panel.sampleX, panel.sampleY);
         const target = visible
-          ? Phaser.Math.Clamp(0.38 + lampBrightness * 0.62, 0, 1)
-          : 0.018;
+          ? Phaser.Math.Clamp(0.28 + lampBrightness * 0.72, 0, 1)
+          : 0.035;
         panel.level = Phaser.Math.Linear(panel.level, target, visible ? 0.22 : 0.12);
-        panel.marker.setAlpha(panel.level);
+        const breathing = visible ? Math.sin(scene.time.now * 0.0035) * 0.025 : 0;
+        panel.marker
+          .setAlpha(panel.level)
+          .setScale(1 + panel.level * 0.045 + breathing);
       }
     },
     getRevealLevels: () => panels.map((panel) => panel.level),
@@ -89,40 +97,15 @@ function createMuralPanel(
   sampleX: number,
   sampleY: number,
 ): MuralPanel {
-  const plate = scene.add.graphics();
-  plate.fillStyle(0x090907, 0.42);
-  plate.fillRoundedRect(-39, -57, 78, 114, 5);
-  plate.fillStyle(0x26231d, 0.96);
-  plate.fillRoundedRect(-34, -52, 68, 104, 4);
-  plate.lineStyle(2, 0x8f6d3f, 0.74);
-  plate.strokeRoundedRect(-34, -52, 68, 104, 4);
-  plate.lineStyle(1, 0x4c4130, 0.9);
-  plate.strokeRect(-28, -46, 56, 92);
-  plate.lineBetween(-21, -20, 21, -20);
-  plate.lineBetween(-21, 17, 21, 17);
-  plate.lineStyle(2, 0x9f7b46, 0.78);
-  plate.lineBetween(0, -14, 12, -2);
-  plate.lineBetween(12, -2, 0, 10);
-  plate.lineBetween(0, 10, -12, -2);
-  plate.lineBetween(-12, -2, 0, -14);
-  plate.fillStyle(0xb38b4f, 0.78);
-  plate.fillCircle(0, -2, 4);
-  plate.lineStyle(1, 0x6d5a3c, 0.7);
-  plate.lineBetween(-27, -43, -16, -32);
-  plate.lineBetween(27, 43, 16, 32);
-
-  const keyTile = scene.add.rectangle(0, 31, 28, 20, 0x11100d, 0.96)
-    .setStrokeStyle(1, 0xb08a51, 0.92);
-  const keyLabel = scene.add.text(0, 31, 'E', {
-    fontFamily: 'Arial, "Microsoft YaHei", sans-serif',
-    fontSize: '13px',
-    fontStyle: 'bold',
-    color: '#d7c39d',
-  }).setOrigin(0.5);
+  const glow = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+  glow.fillStyle(0xb9874c, 0.16);
+  glow.fillEllipse(0, 0, 112, 76);
+  const plate = scene.add
+    .image(0, 0, MURAL_DISCOVERY_UI_TEXTURES.chrome, MURAL_DISCOVERY_UI_TEXTURES.wallMarkerFrame)
+    .setDisplaySize(96, 62);
   const marker = scene.add.container(definition.worldX, definition.worldY, [
+    glow,
     plate,
-    keyTile,
-    keyLabel,
-  ]).setDepth(1.52).setAlpha(0.018);
-  return { sampleX, sampleY, marker, level: 0.018, definition };
+  ]).setDepth(1.52).setAlpha(0.035);
+  return { sampleX, sampleY, marker, level: 0.035, definition };
 }

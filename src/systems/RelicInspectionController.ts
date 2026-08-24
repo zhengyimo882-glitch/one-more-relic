@@ -7,6 +7,7 @@ import {
 } from '../data/relicRestoration';
 import type { TombLootRecord } from './ShopProgressSystem';
 import type { ShopAudioSystem } from './ShopAudioSystem';
+import { PointerGestureSession } from '../input/PointerGestureSession';
 
 type InspectionCallbacks = {
   onEvidence: (evidence: EvidenceRegionDefinition) => void;
@@ -42,6 +43,9 @@ export class RelicInspectionController {
   private stableSince = 0;
   private lastHintKey = '';
   private destroyed = false;
+  private readonly pointerSession: PointerGestureSession;
+  private lastDragAt = 0;
+  private dragVelocityX = 0;
 
   constructor(
     scene: Phaser.Scene,
@@ -67,8 +71,8 @@ export class RelicInspectionController {
     scene.input.setDraggable(this.lamp);
     layer.add([this.light, this.relicContainer, this.lamp]);
     this.applyFace(); this.drawLight();
+    this.pointerSession = new PointerGestureSession(scene, () => this.finishArtifactDrag());
     scene.input.on('pointerdown', this.onPointerDown);
-    scene.input.on('pointerup', this.onPointerUp);
     scene.input.on('pointermove', this.onPointerMove);
     scene.input.on('wheel', this.onWheel);
     scene.input.on('drag', this.onDrag);
@@ -81,18 +85,20 @@ export class RelicInspectionController {
     this.applyFace(); this.audio?.playSfx('choice-move');
   }
 
+  isDragging(): boolean { return this.artifactDragging || this.scene.input.activePointer?.isDown === true; }
+
   update(time: number, pointer: Phaser.Input.Pointer): void {
     if (this.destroyed || this.artifactDragging || pointer.primaryDown) {
       this.stableEvidence = undefined; return;
     }
     const face = this.currentFace();
     const halfWidth = face.displayWidth * this.zoom / 2; const halfHeight = face.displayHeight * this.zoom / 2;
-    if (Math.abs(pointer.x - this.centerX) > halfWidth || Math.abs(pointer.y - this.centerY) > halfHeight) {
+    if (Math.abs(pointer.x - this.relicContainer.x) > halfWidth || Math.abs(pointer.y - this.relicContainer.y) > halfHeight) {
       this.scene.game.canvas.style.cursor = 'default';
       this.stableEvidence = undefined; return;
     }
-    const nx = (pointer.x - (this.centerX - halfWidth)) / (halfWidth * 2);
-    const ny = (pointer.y - (this.centerY - halfHeight)) / (halfHeight * 2);
+    const nx = (pointer.x - (this.relicContainer.x - halfWidth)) / (halfWidth * 2);
+    const ny = (pointer.y - (this.relicContainer.y - halfHeight)) / (halfHeight * 2);
     const speed = Phaser.Math.Distance.Between(pointer.x, pointer.y, this.lastPointer.x, this.lastPointer.y)
       / Math.max(0.016, (time - this.lastPointerAt) / 1000);
     this.lastPointer.set(pointer.x, pointer.y); this.lastPointerAt = time;
@@ -129,30 +135,70 @@ export class RelicInspectionController {
     if (this.destroyed) return;
     this.destroyed = true;
     this.scene.input.off('pointerdown', this.onPointerDown);
-    this.scene.input.off('pointerup', this.onPointerUp);
     this.scene.input.off('pointermove', this.onPointerMove);
     this.scene.input.off('wheel', this.onWheel);
     this.scene.input.off('drag', this.onDrag);
     this.scene.input.off('dragend', this.onDragEnd);
     this.scene.game.canvas.style.cursor = 'default';
+    this.pointerSession.destroy();
   }
 
   private readonly onPointerDown = (pointer: Phaser.Input.Pointer, gameObjects: Phaser.GameObjects.GameObject[]): void => {
     if (gameObjects.includes(this.lamp)) return;
     const face = this.currentFace();
-    if (Math.abs(pointer.x - this.centerX) > face.displayWidth * this.zoom / 2 || Math.abs(pointer.y - this.centerY) > face.displayHeight * this.zoom / 2) return;
+    if (Math.abs(pointer.x - this.relicContainer.x) > face.displayWidth * this.zoom / 2 || Math.abs(pointer.y - this.relicContainer.y) > face.displayHeight * this.zoom / 2) return;
+    if (!this.pointerSession.begin(pointer)) return;
     this.artifactDragging = true; this.dragStartX = pointer.x; this.dragAccumulator = 0;
+    this.lastPointer.set(pointer.x, pointer.y);
+    this.lastDragAt = this.scene.time.now; this.dragVelocityX = 0;
   };
 
-  private readonly onPointerUp = (): void => {
+  private finishArtifactDrag(): void {
     if (!this.artifactDragging) return;
     this.artifactDragging = false;
-    if (Math.abs(this.dragAccumulator) > 52) this.nextFace(this.dragAccumulator > 0 ? 1 : -1);
-    this.scene.tweens.add({ targets: this.relicContainer, scaleX: this.zoom, scaleY: this.zoom, angle: 0, duration: 160 });
-  };
+    const shouldFlip = Math.abs(this.dragAccumulator) > 52 || Math.abs(this.dragVelocityX) > 280;
+    if (shouldFlip) {
+      const direction = (Math.abs(this.dragAccumulator) > 8 ? this.dragAccumulator : this.dragVelocityX) > 0 ? 1 : -1;
+      this.scene.tweens.add({
+        targets: this.relicContainer,
+        scaleX: 0.07,
+        angle: direction * 5,
+        duration: 125,
+        ease: 'Sine.In',
+        onComplete: () => {
+          this.nextFace(direction);
+          this.relicContainer.setScale(0.07, this.zoom).setAngle(-direction * 5);
+          this.scene.tweens.add({
+            targets: this.relicContainer,
+            scaleX: this.zoom,
+            angle: 0,
+            duration: 155,
+            ease: 'Sine.Out',
+          });
+        },
+      });
+      return;
+    }
+    const inertialAngle = Phaser.Math.Clamp(this.dragVelocityX * 0.012, -7, 7);
+    this.scene.tweens.add({
+      targets: this.relicContainer,
+      scaleX: this.zoom,
+      scaleY: this.zoom,
+      angle: inertialAngle,
+      duration: 90,
+      yoyo: true,
+      ease: 'Sine.Out',
+      onComplete: () => this.relicContainer.setAngle(0),
+    });
+  }
 
   private readonly onPointerMove = (pointer: Phaser.Input.Pointer): void => {
-    if (!this.artifactDragging) return;
+    if (!this.artifactDragging || !this.pointerSession.isActive(pointer)) return;
+    const now = this.scene.time.now;
+    const dt = Math.max(16, now - this.lastDragAt);
+    this.dragVelocityX = (pointer.x - this.lastPointer.x) / dt * 1000;
+    this.lastPointer.set(pointer.x, pointer.y);
+    this.lastDragAt = now;
     this.dragAccumulator = pointer.x - this.dragStartX;
     const squeeze = 1 - Math.min(0.22, Math.abs(this.dragAccumulator) / 620);
     this.relicContainer.setScale(this.zoom * squeeze, this.zoom).setAngle(Phaser.Math.Clamp(this.dragAccumulator / 30, -5, 5));
@@ -160,7 +206,13 @@ export class RelicInspectionController {
 
   private readonly onWheel = (pointer: Phaser.Input.Pointer, _objects: Phaser.GameObjects.GameObject[], _dx: number, dy: number): void => {
     if (pointer.x > 830) return;
+    const previousZoom = this.zoom;
     this.zoom = Phaser.Math.Clamp(this.zoom - Math.sign(dy) * 0.1, 0.82, 1.8);
+    const ratio = this.zoom / previousZoom;
+    this.relicContainer.setPosition(
+      Phaser.Math.Clamp(pointer.x - (pointer.x - this.relicContainer.x) * ratio, this.centerX - 90, this.centerX + 90),
+      Phaser.Math.Clamp(pointer.y - (pointer.y - this.relicContainer.y) * ratio, this.centerY - 65, this.centerY + 65),
+    );
     this.relicContainer.setScale(this.zoom); this.stableEvidence = undefined;
     this.callbacks.onFaceChanged(this.currentFace(), this.zoom, this.lightAngle);
   };

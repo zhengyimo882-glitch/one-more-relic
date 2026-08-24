@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { TOMB_FEEL } from '../config/tombFeelConfig';
 import type { TombPointLight } from '../types/TombLighting';
+import { InputActionManager } from '../input/InputActionManager';
 
 export type LampOccluderRect = Readonly<{
   x: number;
@@ -25,7 +26,7 @@ export class DirectionalLampSystem {
   private readonly light: Phaser.GameObjects.Graphics;
   private readonly pointLightGlow: Phaser.GameObjects.Graphics;
   private readonly debugGraphics: Phaser.GameObjects.Graphics;
-  private readonly toggleKey: Phaser.Input.Keyboard.Key;
+  private readonly inputActions: InputActionManager;
   private readonly occluders: readonly LampOccluderRect[];
   private angle = -Math.PI / 2;
   private aimAngle = -Math.PI / 2;
@@ -44,12 +45,8 @@ export class DirectionalLampSystem {
     private readonly scene: Phaser.Scene,
     occluders: readonly LampOccluderRect[] = [],
   ) {
-    const keyboard = scene.input.keyboard;
-    if (!keyboard) {
-      throw new Error('Keyboard input is required for the directional lamp.');
-    }
     this.occluders = occluders;
-    this.toggleKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F);
+    this.inputActions = InputActionManager.forScene(scene);
     this.darkness = scene.add
       .renderTexture(0, 0, scene.scale.width, scene.scale.height)
       .setOrigin(0)
@@ -77,7 +74,10 @@ export class DirectionalLampSystem {
     pointLights: readonly TombPointLight[] = [],
   ): boolean {
     let toggled = false;
-    if (Phaser.Input.Keyboard.JustDown(this.toggleKey)) {
+    if (
+      this.inputActions.getContext() === 'tomb-world' &&
+      this.inputActions.consume('lamp', { cooldownMs: 140 })
+    ) {
       this.targetBrightness = this.targetBrightness > 0 ? 0 : 1;
       toggled = true;
     }
@@ -226,7 +226,6 @@ export class DirectionalLampSystem {
   }
 
   destroy(): void {
-    this.toggleKey.destroy();
     this.darkness.destroy();
     this.visibilityBrush.destroy();
     this.light.destroy();

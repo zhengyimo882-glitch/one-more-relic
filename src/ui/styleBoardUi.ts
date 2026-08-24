@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { VISUAL_THEME } from '../visuals/visualTheme';
+import { setTypographyRole } from './gameTypography';
 
 export const UI_STYLE_BOARD = {
   colors: {
@@ -36,7 +37,8 @@ export type StyleBoardButtonState =
   | 'pressed'
   | 'focused'
   | 'disabled'
-  | 'selected';
+  | 'selected'
+  | 'loading';
 export type StyleBoardButtonKind = 'primary' | 'secondary' | 'danger';
 
 export function createStyleBoardPanel(
@@ -118,7 +120,7 @@ export function drawStyleBoardButton(
   const top = -height / 2;
   const isDanger = kind === 'danger';
   const disabled = state === 'disabled';
-  const focused = state === 'focused' || state === 'selected';
+  const focused = state === 'focused' || state === 'selected' || state === 'loading';
   const fill = disabled
     ? palette.disabled
     : isDanger
@@ -170,6 +172,12 @@ export function drawStyleBoardButton(
       graphics.lineBetween(x, top + height + 3, Math.min(x + dash, left + width - 8), top + height + 3);
     }
   }
+  if (state === 'loading') {
+    graphics.fillStyle(palette.focus, 0.82);
+    graphics.fillCircle(left + width - 16, 0, 3);
+    graphics.lineStyle(1, palette.focus, 0.55);
+    graphics.strokeCircle(left + width - 16, 0, 7);
+  }
 }
 
 export function styleBoardButtonTextColor(
@@ -180,7 +188,7 @@ export function styleBoardButtonTextColor(
   if (kind === 'danger') return state === 'focused' || state === 'hover'
     ? '#f2c1ae'
     : '#ddb19d';
-  return state === 'focused' || state === 'hover' || state === 'selected'
+  return state === 'focused' || state === 'hover' || state === 'selected' || state === 'loading'
     ? UI_STYLE_BOARD.colors.textBright
     : UI_STYLE_BOARD.colors.text;
 }
@@ -200,6 +208,7 @@ export function createStyleBoardKeycap(
       color: UI_STYLE_BOARD.colors.textBright,
     })
     .setOrigin(0.5);
+  setTypographyRole(text, 'hint-light');
   return scene.add.container(0, 0, [background, text]);
 }
 
@@ -225,6 +234,7 @@ export function createStyleBoardPrompt(
   if (text.displayWidth > width - 60) {
     text.setFontSize(12);
   }
+  setTypographyRole(text, 'hint-light');
   return scene.add.container(0, 0, [background, keycap, text]).setData('label', text);
 }
 

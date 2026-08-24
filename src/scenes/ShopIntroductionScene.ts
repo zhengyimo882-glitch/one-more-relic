@@ -38,12 +38,26 @@ import {
   preloadParchmentPanel,
 } from '../visuals/createParchmentPanel';
 import { ShopAudioSystem } from '../systems/ShopAudioSystem';
+import { ClickMoveController } from '../systems/ClickMoveController';
+import { preloadClickMoveVisuals } from '../visuals/clickMoveVisuals';
 import { isPauseButtonPressed, openPauseMenu } from './PauseMenuScene';
 import {
   createStyleBoardPanel,
   createStyleBoardPrompt,
   UI_STYLE_BOARD,
 } from '../ui/styleBoardUi';
+import { InputActionManager } from '../input/InputActionManager';
+import {
+  SceneTransitionController,
+  installSceneLoadingOverlay,
+  markSceneInteractive,
+} from '../systems/SceneTransitionController';
+import {
+  BilingualTextReveal,
+  polishSceneTypography,
+  revealPanel,
+  setTypographyRole,
+} from '../ui/gameTypography';
 
 const SERIF_FONT = VISUAL_THEME.fonts.serif;
 const SANS_FONT = VISUAL_THEME.fonts.sans;
@@ -261,12 +275,10 @@ export class ShopIntroductionScene extends Phaser.Scene {
   private collider?: Phaser.Physics.Arcade.Collider;
   private atmosphere?: ProceduralAtmosphere;
   private shopAudio?: ShopAudioSystem;
+  private clickMove?: ClickMoveController;
 
-  private interactKey?: Phaser.Input.Keyboard.Key;
-  private enterKey?: Phaser.Input.Keyboard.Key;
-  private leftKey?: Phaser.Input.Keyboard.Key;
-  private rightKey?: Phaser.Input.Keyboard.Key;
-  private escapeKey?: Phaser.Input.Keyboard.Key;
+  private inputActions?: InputActionManager;
+  private transitionController?: SceneTransitionController;
 
   private locationUI?: Phaser.GameObjects.Container;
   private objectiveUI?: Phaser.GameObjects.Container;
@@ -284,6 +296,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
   private dialoguePlayerPortrait?: Phaser.GameObjects.Sprite;
   private dialogueFocusOverlay?: Phaser.GameObjects.Graphics;
   private dialogueSpeakerFocus?: Phaser.GameObjects.Graphics;
+  private dialogueReveal?: BilingualTextReveal;
   private choicePanel?: Phaser.GameObjects.Container;
   private choiceTitleEn?: Phaser.GameObjects.Text;
   private choiceTitleZh?: Phaser.GameObjects.Text;
@@ -296,6 +309,8 @@ export class ShopIntroductionScene extends Phaser.Scene {
   }
 
   preload(): void {
+    installSceneLoadingOverlay(this);
+    preloadClickMoveVisuals(this);
     preloadPlayerAvatarAssets(this);
     preloadShopkeeperAssets(this);
     preloadParchmentPanel(this);
@@ -310,6 +325,8 @@ export class ShopIntroductionScene extends Phaser.Scene {
 
   create(): void {
     this.resetState();
+    this.inputActions = InputActionManager.forScene(this);
+    this.transitionController = new SceneTransitionController(this, this.inputActions);
     this.shopAudio = new ShopAudioSystem();
     this.physics.world.setBounds(0, 0, ANTIQUE_SHOP_WIDTH, ANTIQUE_SHOP_HEIGHT);
     this.cameras.main.setBackgroundColor('#111310');
@@ -334,21 +351,36 @@ export class ShopIntroductionScene extends Phaser.Scene {
       this.player,
       this.interior.obstacles,
     );
+    this.clickMove = new ClickMoveController(this, this.player, {
+      obstacles: () => this.interior?.obstacles.getChildren() ?? [],
+      isEnabled: () => this.phase === 'free-roam' && Boolean(this.player?.isMovementEnabled()),
+      screenExclusions: [
+        new Phaser.Geom.Rectangle(0, 0, 460, 150),
+        new Phaser.Geom.Rectangle(920, 0, 360, 170),
+        new Phaser.Geom.Rectangle(0, 660, 1280, 60),
+      ],
+      clearance: 19,
+      depth: 18,
+    });
     this.createFixedUI();
+    polishSceneTypography(this);
     this.createInput();
     this.startArrival();
+    markSceneInteractive(this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.handleShutdown, this);
   }
 
   update(): void {
-    if (!this.player || !this.interactKey || !this.enterKey || !this.escapeKey) {
+    if (!this.player || !this.inputActions) {
       return;
     }
-    if (Phaser.Input.Keyboard.JustDown(this.escapeKey) || isPauseButtonPressed(this)) {
+    this.inputActions.setContext(`shop-intro:${this.phase}`);
+    if (this.inputActions.consume('cancel') || isPauseButtonPressed(this)) {
       openPauseMenu(this);
       return;
     }
     this.atmosphere?.update(this.player.x, this.player.y, this.time.now);
+    this.clickMove?.update(this.time.now);
 
     if (this.phase === 'free-roam' || this.phase === 'arriving') {
       this.player.update();
@@ -360,21 +392,21 @@ export class ShopIntroductionScene extends Phaser.Scene {
       this.player.setMovementEnabled(false);
     }
 
-    const confirmPressed =
-      Phaser.Input.Keyboard.JustDown(this.interactKey) ||
-      Phaser.Input.Keyboard.JustDown(this.enterKey);
+    const confirmPressed = this.inputActions.consume('confirm');
+    const leftPressed = this.inputActions.consume('nav-left', { cooldownMs: 120 });
+    const rightPressed = this.inputActions.consume('nav-right', { cooldownMs: 120 });
 
     if (this.phase === 'job-confirmation') {
-      this.updateChoiceInput(confirmPressed, true);
+      this.updateChoiceInput(confirmPressed, leftPressed, rightPressed, true);
       return;
     }
     if (this.phase === 'response-choice') {
-      this.updateChoiceInput(confirmPressed, false);
+      this.updateChoiceInput(confirmPressed, leftPressed, rightPressed, false);
       return;
     }
     if (this.phase === 'conversation') {
       if (confirmPressed) {
-        this.advanceConversation();
+        this.requestConversationAdvance();
       }
       return;
     }
@@ -400,15 +432,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
   }
 
   private createInput(): void {
-    const keyboard = this.input.keyboard;
-    if (!keyboard) {
-      throw new Error('Keyboard input is required for the shop introduction.');
-    }
-    this.interactKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
-    this.enterKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
-    this.leftKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
-    this.rightKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
-    this.escapeKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+    this.inputActions = InputActionManager.forScene(this);
   }
 
   private createFixedUI(): void {
@@ -512,12 +536,12 @@ export class ShopIntroductionScene extends Phaser.Scene {
   }
 
   private createDialoguePanel(): void {
-    const background = createParchmentPanel(this, 1120, 220);
-    const innerBorder = this.add.rectangle(0, 0, 1094, 194, 0x000000, 0)
+    const background = createParchmentPanel(this, 1120, 250);
+    const innerBorder = this.add.rectangle(0, 0, 1094, 224, 0x000000, 0)
       .setStrokeStyle(1, 0x5c3b22, 0.5);
     const portraitFrame = this.add.rectangle(-472, 0, 142, 154, 0x211b16, 0.96)
       .setStrokeStyle(1, 0x806b4d, 0.72);
-    this.dialogueAccent = this.add.rectangle(-557, 0, 6, 220, 0x7b4226, 1);
+    this.dialogueAccent = this.add.rectangle(-557, 0, 6, 250, 0x7b4226, 1);
     this.dialoguePortrait = this.add.graphics();
     this.dialogueShopkeeperPortrait = this.add
       .sprite(-472, 20, SHOPKEEPER_TEXTURE_KEY, 0)
@@ -530,54 +554,76 @@ export class ShopIntroductionScene extends Phaser.Scene {
       .setScale(0.62)
       .setTint(getPlayerAvatarTint(this.appearanceId))
       .setVisible(false);
-    this.dialogueContext = this.add.text(-382, -84, 'FIRST COMMISSION / 第一次委托', {
+    this.dialogueContext = this.add.text(-382, -103, 'FIRST COMMISSION / 第一次委托', {
       fontFamily: SANS_FONT,
-      fontSize: '11px',
+      fontSize: '12px',
       fontStyle: 'bold',
       color: '#3b2415',
       letterSpacing: 1,
     });
-    this.dialogueSpeakerEn = this.add.text(-382, -63, '', {
+    setTypographyRole(this.dialogueContext, 'meta-dark');
+    this.dialogueSpeakerEn = this.add.text(-382, -79, '', {
       fontFamily: SANS_FONT,
-      fontSize: '14px',
+      fontSize: '15px',
       fontStyle: 'bold',
       color: '#4f1f12',
       letterSpacing: 1,
     });
-    this.dialogueSpeakerZh = this.add.text(-382, -42, '', {
+    setTypographyRole(this.dialogueSpeakerEn, 'dialogue-speaker-dark');
+    this.dialogueSpeakerZh = this.add.text(-382, -56, '', {
       fontFamily: SANS_FONT,
-      fontSize: '12px',
+      fontSize: '14px',
       color: '#332016',
     });
-    this.dialogueTextEn = this.add.text(-382, -13, '', {
+    setTypographyRole(this.dialogueSpeakerZh, 'meta-dark');
+    this.dialogueTextEn = this.add.text(-382, -28, '', {
       fontFamily: SERIF_FONT,
-      fontSize: '19px',
+      fontSize: '20px',
       color: '#1e1109',
       lineSpacing: 4,
       wordWrap: { width: 838 },
     });
-    this.dialogueTextZh = this.add.text(-382, 47, '', {
+    setTypographyRole(this.dialogueTextEn, 'dialogue-body-dark');
+    this.dialogueTextZh = this.add.text(-382, 34, '', {
       fontFamily: SERIF_FONT,
-      fontSize: '15px',
+      fontSize: '17px',
       fontStyle: 'bold',
       color: '#24140b',
       lineSpacing: 3,
       wordWrap: { width: 838 },
     });
+    setTypographyRole(this.dialogueTextZh, 'dialogue-translation-dark');
     this.dialogueProgress = this.add
-      .text(480, -84, '', {
+      .text(480, -103, '', {
         fontFamily: SANS_FONT,
-        fontSize: '11px',
+        fontSize: '12px',
         color: '#3a2516',
       })
       .setOrigin(1, 0);
+    setTypographyRole(this.dialogueProgress, 'meta-dark');
+    const continueBacking = this.add
+      .rectangle(0, 101, 310, 30, 0x21150e, 0.92)
+      .setStrokeStyle(1, 0x9c7140, 0.78);
     const continueText = this.add
-      .text(0, 84, 'E / ENTER  CONTINUE / 继续', {
+      .text(0, 101, 'E / ENTER / 鼠标点击  继续', {
         fontFamily: SANS_FONT,
-        fontSize: '12px',
-        color: '#2f1d11',
+        fontSize: '13px',
+        color: '#ead9b9',
       })
       .setOrigin(0.5);
+    setTypographyRole(continueText, 'hint-light');
+    this.dialogueReveal = new BilingualTextReveal(
+      this,
+      this.dialogueTextEn,
+      this.dialogueTextZh,
+      () => {
+        if (this.dialogueTextEn && this.dialogueTextZh) {
+          this.dialogueTextZh.setY(
+            this.dialogueTextEn.y + this.dialogueTextEn.height + 8,
+          );
+        }
+      },
+    );
     this.dialoguePanel = this.add
       .container(this.scale.width / 2, 594, [
         background,
@@ -593,11 +639,30 @@ export class ShopIntroductionScene extends Phaser.Scene {
         this.dialogueTextEn,
         this.dialogueTextZh,
         this.dialogueProgress,
+        continueBacking,
         continueText,
       ])
       .setDepth(110)
       .setScrollFactor(0)
-      .setVisible(false);
+      .setVisible(false)
+      .setSize(1120, 250)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerover', () => continueText.setColor('#fff0c9'))
+      .on('pointerout', () => continueText.setColor('#aaa087'))
+      .on(
+        'pointerup',
+        (
+          _pointer: Phaser.Input.Pointer,
+          _localX: number,
+          _localY: number,
+          event: Phaser.Types.Input.EventData,
+        ) => {
+          event.stopPropagation();
+          if (this.phase !== 'conversation') return;
+          this.shopAudio?.playSfx('dialogue');
+          this.requestConversationAdvance();
+        },
+      );
   }
 
   private createChoicePanel(): void {
@@ -611,6 +676,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
       color: '#3b2415',
       letterSpacing: 1,
     });
+    setTypographyRole(context, 'meta-dark');
     this.choiceTitleEn = this.add
       .text(0, -70, '', {
         fontFamily: SERIF_FONT,
@@ -619,6 +685,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
         color: '#1e1109',
       })
       .setOrigin(0.5);
+    setTypographyRole(this.choiceTitleEn, 'dialogue-body-dark');
     this.choiceTitleZh = this.add
       .text(0, -42, '', {
         fontFamily: SERIF_FONT,
@@ -626,13 +693,18 @@ export class ShopIntroductionScene extends Phaser.Scene {
         color: '#2e1b12',
       })
       .setOrigin(0.5);
+    setTypographyRole(this.choiceTitleZh, 'dialogue-translation-dark');
+    const controlsBacking = this.add
+      .rectangle(0, 86, 480, 30, 0x21150e, 0.92)
+      .setStrokeStyle(1, 0x9c7140, 0.78);
     const controls = this.add
-      .text(0, 86, 'A / D  SELECT / 选择     E  CONFIRM / 确认', {
+      .text(0, 86, 'A / D 或鼠标悬停  选择     E / 鼠标点击  确认', {
         fontFamily: SANS_FONT,
         fontSize: '13px',
-        color: '#2f1d11',
+        color: '#ead9b9',
       })
       .setOrigin(0.5);
+    setTypographyRole(controls, 'hint-light');
     this.choicePanel = this.add
       .container(this.scale.width / 2, 586, [
         background,
@@ -640,6 +712,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
         context,
         this.choiceTitleEn,
         this.choiceTitleZh,
+        controlsBacking,
         controls,
       ])
       .setDepth(115)
@@ -714,6 +787,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
     this.choicePanel?.setVisible(false);
     this.dialogueFocusOverlay?.setVisible(true);
     this.dialoguePanel?.setVisible(true);
+    if (this.dialoguePanel) revealPanel(this, this.dialoguePanel);
     this.showDialogueBeat();
   }
 
@@ -724,8 +798,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
     }
     this.dialogueSpeakerEn?.setText(beat.speakerEn);
     this.dialogueSpeakerZh?.setText(beat.speakerZh);
-    this.dialogueTextEn?.setText(beat.textEn);
-    this.dialogueTextZh?.setText(beat.textZh);
+    this.dialogueReveal?.show(beat.textEn, beat.textZh);
     this.dialogueProgress?.setText(
       `${String(this.dialogueIndex + 1).padStart(2, '0')} / ${String(this.dialogueBeats.length).padStart(2, '0')}`,
     );
@@ -869,6 +942,14 @@ export class ShopIntroductionScene extends Phaser.Scene {
     this.beginDeparture();
   }
 
+  private requestConversationAdvance(): void {
+    if (this.dialogueReveal?.complete()) {
+      this.shopAudio?.playSfx('dialogue');
+      return;
+    }
+    this.advanceConversation();
+  }
+
   private openResponseChoice(): void {
     this.phase = 'response-choice';
     this.selectedChoice = 0;
@@ -931,6 +1012,29 @@ export class ShopIntroductionScene extends Phaser.Scene {
           color: '#bbb19e',
         })
         .setOrigin(0.5);
+      card
+        .setSize(440, 78)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerover', () => {
+          if (this.selectedChoice !== index) this.shopAudio?.playSfx('choice-move');
+          this.selectedChoice = index;
+          this.updateChoiceAppearance();
+        })
+        .on('pointerdown', () => card.setScale(0.985))
+        .on('pointerout', () => this.updateChoiceAppearance())
+        .on(
+          'pointerup',
+          (
+            _pointer: Phaser.Input.Pointer,
+            _localX: number,
+            _localY: number,
+            event: Phaser.Types.Input.EventData,
+          ) => {
+            event.stopPropagation();
+            card.setScale(1);
+            this.confirmChoiceWithPointer(index);
+          },
+        );
       card.add([bg, en, zh]);
       this.choicePanel?.add(card);
       this.choiceCards.push(card);
@@ -939,14 +1043,13 @@ export class ShopIntroductionScene extends Phaser.Scene {
     this.updateChoiceAppearance();
   }
 
-  private updateChoiceInput(confirmPressed: boolean, jobChoice: boolean): void {
-    if (!this.leftKey || !this.rightKey) {
-      return;
-    }
-    if (
-      Phaser.Input.Keyboard.JustDown(this.leftKey) ||
-      Phaser.Input.Keyboard.JustDown(this.rightKey)
-    ) {
+  private updateChoiceInput(
+    confirmPressed: boolean,
+    leftPressed: boolean,
+    rightPressed: boolean,
+    jobChoice: boolean,
+  ): void {
+    if (leftPressed || rightPressed) {
       this.selectedChoice = this.selectedChoice === 0 ? 1 : 0;
       this.shopAudio?.playSfx('choice-move');
       this.updateChoiceAppearance();
@@ -1029,25 +1132,32 @@ export class ShopIntroductionScene extends Phaser.Scene {
     this.dialogueSpeakerFocus?.setVisible(false);
     this.shopAudio?.playSfx('transition');
     this.shopAudio?.stopVoice();
-    this.transitionTimer = this.time.delayedCall(250, () => {
-      this.cameras.main.fadeOut(650, 12, 12, 10);
-      this.transitionTimer = this.time.delayedCall(700, () => {
-        this.scene.start('TombScene', { appearanceId: this.appearanceId });
-      });
-    });
+    this.transitionController?.start(
+      'TombScene',
+      { appearanceId: this.appearanceId },
+      { durationMs: 220, label: '拓片显影 · 清代风水师墓' },
+    );
   }
 
   private handleShutdown(): void {
     this.arrivalTimer?.remove(false);
     this.transitionTimer?.remove(false);
     this.collider?.destroy();
+    this.clickMove?.destroy();
+    this.clickMove = undefined;
+    this.dialogueReveal?.destroy();
+    this.dialogueReveal = undefined;
     this.tweens.killAll();
-    this.interactKey = undefined;
-    this.enterKey = undefined;
-    this.leftKey = undefined;
-    this.rightKey = undefined;
-    this.escapeKey = undefined;
     this.shopAudio?.destroy();
     this.shopAudio = undefined;
+  }
+
+  private confirmChoiceWithPointer(index: number): void {
+    if (this.phase !== 'response-choice' && this.phase !== 'job-confirmation') return;
+    this.selectedChoice = index;
+    this.updateChoiceAppearance();
+    this.shopAudio?.playSfx('choice-confirm');
+    if (this.phase === 'job-confirmation') this.confirmJobChoice();
+    else this.confirmResponseChoice();
   }
 }

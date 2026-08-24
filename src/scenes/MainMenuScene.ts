@@ -6,6 +6,9 @@ import {
   UI_STYLE_BOARD,
   type StyleBoardButtonState,
 } from '../ui/styleBoardUi';
+import { InputActionManager } from '../input/InputActionManager';
+import { SceneTransitionController, markSceneInteractive } from '../systems/SceneTransitionController';
+import { polishSceneTypography, setTypographyRole } from '../ui/gameTypography';
 
 const SERIF_FONT =
   'Georgia, "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif';
@@ -14,6 +17,9 @@ const SANS_FONT =
 
 export class MainMenuScene extends Phaser.Scene {
   private isStarting = false;
+  private inputActions?: InputActionManager;
+  private transitionController?: SceneTransitionController;
+  private startAction?: () => void;
 
   constructor() {
     super('MainMenuScene');
@@ -21,6 +27,9 @@ export class MainMenuScene extends Phaser.Scene {
 
   create(): void {
     this.isStarting = false;
+    this.inputActions = InputActionManager.forScene(this);
+    this.inputActions.setContext('main-menu');
+    this.transitionController = new SceneTransitionController(this, this.inputActions);
 
     const { width, height } = this.scale;
 
@@ -37,6 +46,7 @@ export class MainMenuScene extends Phaser.Scene {
         letterSpacing: 5,
       })
       .setOrigin(0.5);
+    setTypographyRole(title, 'display-title');
 
     const subtitle = this.add
       .text(0, 72, '见好不收', {
@@ -73,6 +83,12 @@ export class MainMenuScene extends Phaser.Scene {
     });
 
     this.createStartButton(width / 2, height / 2 + 135);
+    polishSceneTypography(this);
+    markSceneInteractive(this);
+  }
+
+  update(): void {
+    if (!this.isStarting && this.inputActions?.consume('confirm')) this.startAction?.();
   }
 
   private createStartButton(x: number, y: number): void {
@@ -125,14 +141,29 @@ export class MainMenuScene extends Phaser.Scene {
       }
     });
 
-    button.on('pointerup', () => {
+    const start = (): void => {
       if (this.isStarting) {
         return;
       }
 
       this.isStarting = true;
       button.disableInteractive();
-      this.scene.start('StoryIntroScene');
-    });
+      setState('loading');
+      label.setText('STARTING…\n正在展开');
+      this.tweens.add({
+        targets: button,
+        scaleX: 1.01,
+        scaleY: 1.01,
+        duration: 70,
+        yoyo: true,
+        onComplete: () => this.transitionController?.start(
+          'StoryIntroScene',
+          undefined,
+          { durationMs: 200, label: '拓片显影 · 故事开始' },
+        ),
+      });
+    };
+    this.startAction = start;
+    button.on('pointerup', start);
   }
 }

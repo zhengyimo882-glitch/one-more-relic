@@ -1,6 +1,21 @@
 import Phaser from 'phaser';
 import { DEFAULT_PLAYER_APPEARANCE_ID } from '../data/playerAppearances';
+import {
+  STORY_INTRO_TEXTURES,
+  preloadNarrativeArt,
+} from '../visuals/narrativeArt';
 import { isPauseButtonPressed, openPauseMenu } from './PauseMenuScene';
+import { InputActionManager } from '../input/InputActionManager';
+import {
+  SceneTransitionController,
+  installSceneLoadingOverlay,
+  markSceneInteractive,
+} from '../systems/SceneTransitionController';
+import {
+  BilingualTextReveal,
+  polishSceneTypography,
+  setTypographyRole,
+} from '../ui/gameTypography';
 
 const SERIF_FONT =
   'Georgia, "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif';
@@ -37,50 +52,51 @@ export class StoryIntroScene extends Phaser.Scene {
   private actIndex = 0;
   private transitioning = false;
   private root?: Phaser.GameObjects.Container;
-  private visual?: Phaser.GameObjects.Graphics;
+  private visual?: Phaser.GameObjects.Image;
   private englishText?: Phaser.GameObjects.Text;
   private chineseText?: Phaser.GameObjects.Text;
   private transitionTween?: Phaser.Tweens.Tween;
-  private continueKey?: Phaser.Input.Keyboard.Key;
-  private enterKey?: Phaser.Input.Keyboard.Key;
-  private skipKey?: Phaser.Input.Keyboard.Key;
-  private escapeKey?: Phaser.Input.Keyboard.Key;
+  private inputActions?: InputActionManager;
+  private transitionController?: SceneTransitionController;
+  private textReveal?: BilingualTextReveal;
 
   constructor() {
     super('StoryIntroScene');
   }
 
+  preload(): void {
+    installSceneLoadingOverlay(this);
+    preloadNarrativeArt(this);
+  }
+
   create(): void {
     this.actIndex = 0;
     this.transitioning = false;
+    this.inputActions = InputActionManager.forScene(this);
+    this.inputActions.setContext('story-intro');
+    this.transitionController = new SceneTransitionController(this, this.inputActions);
     this.cameras.main.setBackgroundColor('#181b17');
     this.createStoryDisplay();
+    polishSceneTypography(this);
     this.registerInput();
     this.showAct(this.actIndex);
+    markSceneInteractive(this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.transitionTween?.stop();
+      this.textReveal?.destroy();
     });
   }
 
   update(): void {
-    if (
-      this.transitioning ||
-      !this.continueKey ||
-      !this.enterKey ||
-      !this.skipKey ||
-      !this.escapeKey
-    ) {
+    if (this.transitioning || !this.inputActions) {
       return;
     }
-    const continuePressed =
-      Phaser.Input.Keyboard.JustDown(this.continueKey) ||
-      Phaser.Input.Keyboard.JustDown(this.enterKey);
-    const skipPressed = Phaser.Input.Keyboard.JustDown(this.skipKey);
-    const escapePressed =
-      Phaser.Input.Keyboard.JustDown(this.escapeKey) || isPauseButtonPressed(this);
+    const continuePressed = this.inputActions.consume('confirm');
+    const skipPressed = this.inputActions.consume('skip');
+    const escapePressed = this.inputActions.consume('cancel') || isPauseButtonPressed(this);
 
     if (continuePressed) {
-      this.advanceAct();
+      this.requestAdvance();
       return;
     }
     if (skipPressed) {
@@ -93,33 +109,53 @@ export class StoryIntroScene extends Phaser.Scene {
   }
 
   private createStoryDisplay(): void {
-    this.visual = this.add.graphics();
-    this.visual.setScale(1.16);
+    this.visual = this.add
+      .image(0, 0, STORY_INTRO_TEXTURES[0])
+      .setDisplaySize(1280, 720);
+    const lowerVignette = this.add.graphics();
+    for (let index = 0; index < 8; index += 1) {
+      lowerVignette.fillStyle(0x090806, 0.08 + index * 0.055);
+      lowerVignette.fillRect(-640, 318 + index * 36, 1280, 40);
+    }
     const textPanel = this.add.graphics();
-    textPanel.fillStyle(0x171612, 0.94);
-    textPanel.fillRect(-520, 58, 1040, 158);
+    textPanel.fillStyle(0x12100d, 0.9);
+    textPanel.fillRect(-520, 48, 1040, 184);
     textPanel.lineStyle(1, 0xb39c77, 0.86);
-    textPanel.lineBetween(-520, 58, 520, 58);
+    textPanel.lineBetween(-520, 48, 520, 48);
     this.englishText = this.add
-      .text(-478, 80, '', {
+      .text(-478, 72, '', {
         fontFamily: SERIF_FONT,
-        fontSize: '24px',
+        fontSize: '25px',
         color: '#e3d9c1',
         wordWrap: { width: 956 },
         lineSpacing: 5,
       })
       .setOrigin(0, 0);
+    setTypographyRole(this.englishText, 'dialogue-body-light');
     this.chineseText = this.add
-      .text(-478, 146, '', {
+      .text(-478, 150, '', {
         fontFamily: SERIF_FONT,
-        fontSize: '18px',
+        fontSize: '19px',
         color: '#bbb3a2',
         wordWrap: { width: 956 },
         lineSpacing: 4,
       })
       .setOrigin(0, 0);
+    setTypographyRole(this.chineseText, 'dialogue-translation-light');
+    this.textReveal = new BilingualTextReveal(
+      this,
+      this.englishText,
+      this.chineseText,
+      () => {
+        if (this.englishText && this.chineseText) {
+          this.chineseText.setY(this.englishText.y + this.englishText.height + 10);
+        }
+      },
+      18,
+    );
     this.root = this.add.container(640, 360, [
       this.visual,
+      lowerVignette,
       textPanel,
       this.englishText,
       this.chineseText,
@@ -128,7 +164,7 @@ export class StoryIntroScene extends Phaser.Scene {
       .text(
         640,
         678,
-        'E / ENTER  CONTINUE / 继续     S  SKIP INTRO / 跳过介绍',
+        'E / ENTER / 鼠标点击  继续     S  跳过介绍',
         {
           fontFamily: SANS_FONT,
           fontSize: '15px',
@@ -143,17 +179,22 @@ export class StoryIntroScene extends Phaser.Scene {
         color: '#979f93',
       })
       .setOrigin(0, 0.5);
+
+    this.add
+      .zone(640, 360, 1280, 720)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerup', () => {
+        if (!this.transitioning) this.requestAdvance();
+      });
   }
 
   private registerInput(): void {
-    const keyboard = this.input.keyboard;
-    if (!keyboard) {
-      throw new Error('Keyboard input is required for the story introduction.');
-    }
-    this.continueKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
-    this.enterKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
-    this.skipKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
-    this.escapeKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+    this.inputActions = InputActionManager.forScene(this);
+  }
+
+  private requestAdvance(): void {
+    if (this.textReveal?.complete()) return;
+    this.advanceAct();
   }
 
   private advanceAct(): void {
@@ -187,94 +228,17 @@ export class StoryIntroScene extends Phaser.Scene {
   }
 
   private enterAntiqueShop(): void {
-    this.scene.start('ShopIntroductionScene', {
-      appearanceId: DEFAULT_PLAYER_APPEARANCE_ID,
-    });
+    this.transitioning = true;
+    this.transitionController?.start(
+      'ShopIntroductionScene',
+      { appearanceId: DEFAULT_PLAYER_APPEARANCE_ID },
+      { durationMs: 220, label: '拓片显影 · 古玩店' },
+    );
   }
 
   private showAct(index: number): void {
     const act = STORY_ACTS[index];
-    this.englishText?.setText(act.english);
-    this.chineseText?.setText(act.chinese);
-    this.drawActVisual(index);
-  }
-
-  private drawActVisual(index: number): void {
-    if (!this.visual) {
-      return;
-    }
-    const g = this.visual;
-    g.clear();
-    g.fillStyle(0x20231f, 1);
-    g.fillRect(-640, -360, 1280, 720);
-
-    if (index === 0) {
-      g.fillStyle(0x37332c, 1);
-      g.fillRect(-440, -280, 880, 300);
-      g.fillStyle(0x584a3b, 1);
-      g.fillRoundedRect(-280, -140, 560, 160, 6);
-      g.fillStyle(0x222628, 1);
-      g.fillRoundedRect(-95, -126, 190, 98, 5);
-      g.lineStyle(2, 0x69727a, 0.38);
-      g.strokeRoundedRect(-95, -126, 190, 98, 5);
-      g.fillStyle(0x607486, 0.34);
-      g.fillRoundedRect(150, -102, 58, 98, 10);
-      g.fillStyle(0x8a7152, 1);
-      g.fillRect(-390, -112, 120, 110);
-      g.lineStyle(1, 0x9b815c, 0.62);
-      g.strokeRect(-390, -112, 120, 110);
-      g.fillStyle(0x1b2224, 1);
-      g.fillRect(300, -260, 118, 210);
-      g.lineStyle(2, 0x738087, 0.28);
-      for (let y = -245; y < -60; y += 24) {
-        g.lineBetween(305, y, 412, y + 18);
-      }
-    } else if (index === 1) {
-      g.fillStyle(0x514235, 1);
-      g.fillRect(-420, -260, 840, 270);
-      g.fillStyle(0x8a7153, 1);
-      g.fillRect(-250, -178, 500, 176);
-      g.lineStyle(3, 0x9c8059, 0.7);
-      g.strokeRect(-250, -178, 500, 176);
-      g.lineBetween(-250, -178, -195, -220);
-      g.lineBetween(250, -178, 195, -220);
-      g.fillStyle(0xaa8b59, 1);
-      g.fillRoundedRect(-55, -123, 110, 70, 8);
-      g.lineStyle(3, 0xb29a64, 0.8);
-      g.strokeRoundedRect(-55, -123, 110, 70, 8);
-      g.fillStyle(0x3c3025, 1);
-      g.fillTriangle(31, -124, 56, -124, 56, -98);
-      g.lineStyle(2, 0x453b2b, 0.8);
-      g.strokeCircle(0, -88, 18);
-      g.lineBetween(-18, -88, 18, -88);
-      g.lineBetween(0, -106, 0, -70);
-    } else {
-      g.fillStyle(0x2b2d29, 1);
-      g.fillRect(-500, -300, 1000, 305);
-      g.fillStyle(0x464239, 1);
-      for (let x = -450; x <= 350; x += 200) {
-        g.fillRect(x, -245, 135, 210);
-      }
-      g.fillStyle(0x70563d, 0.8);
-      g.fillRect(-360, -225, 110, 42);
-      g.fillRect(240, -180, 120, 38);
-      g.fillStyle(0x6f372f, 0.52);
-      g.fillRect(-470, -85, 75, 14);
-      g.fillRect(300, -115, 88, 14);
-      g.fillStyle(0xc59e58, 0.14);
-      g.fillEllipse(0, -80, 430, 300);
-      g.fillStyle(0x3a2d22, 1);
-      g.fillRect(-105, -225, 210, 225);
-      g.fillStyle(0xcaa15f, 0.9);
-      g.fillRect(-96, -216, 192, 208);
-      g.fillStyle(0x503b2a, 1);
-      g.fillRect(-78, -198, 156, 190);
-      g.fillStyle(0xb59a61, 0.72);
-      g.fillCircle(0, -255, 28);
-      g.lineStyle(4, 0x4b3d2b, 0.9);
-      g.strokeCircle(0, -255, 28);
-      g.lineBetween(-20, -255, 20, -255);
-      g.lineBetween(0, -275, 0, -235);
-    }
+    this.textReveal?.show(act.english, act.chinese);
+    this.visual?.setTexture(STORY_INTRO_TEXTURES[index]);
   }
 }

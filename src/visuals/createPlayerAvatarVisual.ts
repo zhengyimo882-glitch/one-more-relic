@@ -49,7 +49,12 @@ const APPEARANCE_TINTS: Record<PlayerAppearanceDefinition['id'], number> = {
 export interface PlayerAvatarVisual {
   container: Phaser.GameObjects.Container;
   setFacing(direction: PlayerDirection): void;
-  setMovement(moving: boolean, time: number, locomotion?: PlayerLocomotion): void;
+  setMovement(
+    moving: boolean,
+    time: number,
+    locomotion?: PlayerLocomotion,
+    speedRatio?: number,
+  ): void;
   setCarrying(carrying: boolean): void;
   playAction(action: PlayerAction): void;
   getAnimationState(): PlayerVisualState;
@@ -113,6 +118,7 @@ export function createPlayerAvatarVisual(
       isMoving: boolean,
       time: number,
       nextLocomotion: PlayerLocomotion = locomotion,
+      speedRatio = 1,
     ): void {
       if (moving !== isMoving || locomotion !== nextLocomotion) {
         moving = isMoving;
@@ -122,7 +128,8 @@ export function createPlayerAvatarVisual(
       if (actionActive) return;
 
       if (moving) {
-        const stride = Math.sin(time / 102);
+        const cadence = Phaser.Math.Linear(175, 102, Phaser.Math.Clamp(speedRatio, 0, 1));
+        const stride = Math.sin(time / cadence);
         const locomotionSign = locomotion === 'backward' ? -1 : 1;
         sprite.y = -Math.abs(stride) * 0.48;
         sprite.rotation = stride * 0.003 * locomotionSign;
@@ -130,6 +137,7 @@ export function createPlayerAvatarVisual(
           TOMB_FEEL.player.spriteScale * (1 + Math.cos(time / 204) * 0.0015),
           TOMB_FEEL.player.spriteScale * (1 + Math.abs(stride) * 0.0025),
         );
+        sprite.anims.timeScale = Phaser.Math.Clamp(speedRatio, 0.45, 1);
       } else {
         const breath = Math.sin(time / 560) * TOMB_FEEL.player.idleBreathingAmplitude;
         sprite.y = breath * 0.34;

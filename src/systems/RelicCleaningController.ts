@@ -7,6 +7,7 @@ import {
 } from '../data/relicRestoration';
 import type { TombLootRecord } from './ShopProgressSystem';
 import type { ShopAudioSystem } from './ShopAudioSystem';
+import { PointerGestureSession } from '../input/PointerGestureSession';
 
 type CleaningCallbacks = {
   onChanged: (progress: number, damage: number, dirtType: DirtType) => void;
@@ -30,6 +31,7 @@ export class RelicCleaningController {
   private readonly toolFollower: Phaser.GameObjects.Image;
   private readonly maskStamp: Phaser.GameObjects.Image;
   private readonly cells: CleaningCell[] = [];
+  private readonly particlePool: Phaser.GameObjects.Arc[] = [];
   private toolId: RestorationToolId = 'soft-brush';
   private strokeActive = false;
   private lastPointer = new Phaser.Math.Vector2();
@@ -38,6 +40,8 @@ export class RelicCleaningController {
   private lastParticleAt = 0;
   private lastWarningAt = -5000;
   private destroyed = false;
+  private readonly pointerSession: PointerGestureSession;
+  private readonly toolTarget = new Phaser.Math.Vector2();
 
   constructor(
     scene: Phaser.Scene,
@@ -67,11 +71,19 @@ export class RelicCleaningController {
     this.toolFollower = scene.add.image(centerX, centerY, RESTORATION_TOOLS[this.toolId].texture)
       .setDisplaySize(105, 178).setAlpha(0).setDepth(4).setAngle(-28);
     layer.add([shadow, clean, this.damageImage, this.dirtTexture, this.toolFollower]);
+    for (let index = 0; index < 24; index += 1) {
+      const particle = scene.add.circle(0, 0, 2, 0xb8a279, 0)
+        .setDepth(92)
+        .setVisible(false)
+        .setActive(false);
+      this.particlePool.push(particle);
+      layer.add(particle);
+    }
 
     this.createCells();
     this.restoreMask();
+    this.pointerSession = new PointerGestureSession(scene, () => this.finishStroke());
     scene.input.on('pointerdown', this.onPointerDown);
-    scene.input.on('pointerup', this.onPointerUp);
     scene.input.on('pointermove', this.onPointerMove);
   }
 
@@ -86,9 +98,18 @@ export class RelicCleaningController {
   }
 
   getTool(): RestorationToolId { return this.toolId; }
+  isDragging(): boolean { return this.strokeActive; }
 
   update(time: number): void {
-    if (!this.strokeActive || this.destroyed) return;
+    if (this.destroyed) return;
+    if (this.strokeActive) {
+      const follow = 1 - Math.exp(-16.67 / 45);
+      this.toolFollower.setPosition(
+        Phaser.Math.Linear(this.toolFollower.x, this.toolTarget.x, follow),
+        Phaser.Math.Linear(this.toolFollower.y, this.toolTarget.y, follow),
+      );
+    }
+    if (!this.strokeActive) return;
     if (time - this.lastSampleAt >= 70) {
       this.applyAt(this.lastPointer.x, this.lastPointer.y, time, 0);
     }
@@ -98,35 +119,39 @@ export class RelicCleaningController {
     if (this.destroyed) return;
     this.destroyed = true;
     this.scene.input.off('pointerdown', this.onPointerDown);
-    this.scene.input.off('pointerup', this.onPointerUp);
     this.scene.input.off('pointermove', this.onPointerMove);
+    this.pointerSession.destroy();
     this.maskStamp.destroy();
+    this.particlePool.forEach((particle) => this.scene.tweens.killTweensOf(particle));
   }
 
   private readonly onPointerDown = (pointer: Phaser.Input.Pointer): void => {
     if (!this.insideArtifact(pointer.x, pointer.y)) return;
+    if (!this.pointerSession.begin(pointer)) return;
     this.strokeActive = true; this.lastPointer.set(pointer.x, pointer.y);
     this.lastSampleAt = this.scene.time.now; this.dwellMs = 0;
-    this.toolFollower.setPosition(pointer.x + 35, pointer.y + 46).setAlpha(1);
+    this.toolTarget.set(pointer.x + 35, pointer.y + 46);
+    this.toolFollower.setPosition(this.toolTarget.x, this.toolTarget.y).setAlpha(1);
     this.applyAt(pointer.x, pointer.y, this.scene.time.now, 0);
   };
 
-  private readonly onPointerUp = (): void => {
+  private finishStroke(): void {
+    if (!this.strokeActive) return;
     this.strokeActive = false; this.dwellMs = 0;
     this.scene.tweens.add({ targets: this.toolFollower, alpha: 0, duration: 110 });
-  };
+  }
 
   private readonly onPointerMove = (pointer: Phaser.Input.Pointer): void => {
-    if (!this.strokeActive) return;
+    if (!this.strokeActive || !this.pointerSession.isActive(pointer)) return;
     const fromX = this.lastPointer.x; const fromY = this.lastPointer.y;
     const distance = Phaser.Math.Distance.Between(fromX, fromY, pointer.x, pointer.y);
-    const steps = Math.max(1, Math.ceil(distance / 9));
+    const steps = Math.max(1, Math.ceil(distance / 6));
     for (let step = 1; step <= steps; step += 1) {
       const t = step / steps;
       this.applyAt(Phaser.Math.Linear(fromX, pointer.x, t), Phaser.Math.Linear(fromY, pointer.y, t), this.scene.time.now, distance);
     }
     this.lastPointer.set(pointer.x, pointer.y);
-    this.toolFollower.setPosition(pointer.x + 35, pointer.y + 46);
+    this.toolTarget.set(pointer.x + 35, pointer.y + 46);
   };
 
   private applyAt(worldX: number, worldY: number, time: number, movementDistance: number): void {
@@ -249,10 +274,20 @@ export class RelicCleaningController {
     this.lastParticleAt = now;
     const count = dirtType === 'hard-corrosion' ? 3 : 2;
     for (let index = 0; index < count; index += 1) {
-      const particle = this.scene.add.circle(x + Phaser.Math.Between(-7, 7), y + Phaser.Math.Between(-7, 7), Phaser.Math.FloatBetween(1.2, 2.8), color, 0.7).setDepth(92);
+      const particle = this.particlePool.find((candidate) => !candidate.active);
+      if (!particle) return;
+      particle
+        .setPosition(x + Phaser.Math.Between(-7, 7), y + Phaser.Math.Between(-7, 7))
+        .setRadius(Phaser.Math.FloatBetween(1.2, 2.8))
+        .setFillStyle(color, 0.7)
+        .setAlpha(1)
+        .setScale(1)
+        .setVisible(true)
+        .setActive(true);
       this.scene.tweens.add({
         targets: particle, x: particle.x + Phaser.Math.Between(-22, 22), y: particle.y + Phaser.Math.Between(-28, -8),
-        alpha: 0, scale: 0.25, duration: Phaser.Math.Between(260, 520), onComplete: () => particle.destroy(),
+        alpha: 0, scale: 0.25, duration: Phaser.Math.Between(260, 520),
+        onComplete: () => particle.setVisible(false).setActive(false),
       });
     }
   }

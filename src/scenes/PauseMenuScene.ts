@@ -7,6 +7,9 @@ import {
   UI_STYLE_BOARD,
   type StyleBoardButtonKind,
 } from '../ui/styleBoardUi';
+import { InputActionManager } from '../input/InputActionManager';
+import { SceneTransitionController } from '../systems/SceneTransitionController';
+import { polishSceneTypography } from '../ui/gameTypography';
 
 const SERIF_FONT =
   'Georgia, "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif';
@@ -58,12 +61,8 @@ export class PauseMenuScene extends Phaser.Scene {
   private buttonKinds: StyleBoardButtonKind[] = [];
   private buttonSizes: Array<{ width: number; height: number }> = [];
   private confirmPanel?: Phaser.GameObjects.Container;
-  private escapeKey?: Phaser.Input.Keyboard.Key;
-  private enterKey?: Phaser.Input.Keyboard.Key;
-  private upKey?: Phaser.Input.Keyboard.Key;
-  private downKey?: Phaser.Input.Keyboard.Key;
-  private leftKey?: Phaser.Input.Keyboard.Key;
-  private rightKey?: Phaser.Input.Keyboard.Key;
+  private inputActions?: InputActionManager;
+  private transitionController?: SceneTransitionController;
 
   constructor() {
     super('PauseMenuScene');
@@ -86,6 +85,9 @@ export class PauseMenuScene extends Phaser.Scene {
     this.buttonKinds = [];
     this.buttonSizes = [];
     this.inputReadyAt = this.time.now + 160;
+    this.inputActions = InputActionManager.forScene(this);
+    this.inputActions.setContext('pause-menu');
+    this.transitionController = new SceneTransitionController(this, this.inputActions);
 
     if (document.pointerLockElement) {
       document.exitPointerLock();
@@ -125,6 +127,7 @@ export class PauseMenuScene extends Phaser.Scene {
     this.createConfirmationPanel();
     this.registerInput();
     this.updateSelection();
+    polishSceneTypography(this);
   }
 
   update(): void {
@@ -133,23 +136,22 @@ export class PauseMenuScene extends Phaser.Scene {
     }
 
     const pad = this.input.gamepad?.getPad(0);
-    const escapePressed = this.escapeKey
-      ? Phaser.Input.Keyboard.JustDown(this.escapeKey)
-      : false;
+    this.inputActions?.setContext(this.confirmingReturn ? 'pause-confirm-return' : 'pause-menu');
+    const escapePressed = this.inputActions?.consume('cancel') ?? false;
     const padConfirmDown = Boolean(pad?.A);
     const padCancelDown = Boolean(pad?.B);
     const padDirectionDown = Boolean(pad?.up || pad?.down || pad?.left || pad?.right);
     const cancelPressed = escapePressed || (padCancelDown && !this.gamepadCancelHeld);
     const confirmPressed =
-      (this.enterKey ? Phaser.Input.Keyboard.JustDown(this.enterKey) : false) ||
+      (this.inputActions?.consume('confirm') ?? false) ||
       (padConfirmDown && !this.gamepadConfirmHeld);
     const previousPressed =
-      (this.upKey ? Phaser.Input.Keyboard.JustDown(this.upKey) : false) ||
-      (this.leftKey ? Phaser.Input.Keyboard.JustDown(this.leftKey) : false) ||
+      (this.inputActions?.consume('nav-up', { cooldownMs: 120 }) ?? false) ||
+      (this.inputActions?.consume('nav-left', { cooldownMs: 120 }) ?? false) ||
       (Boolean(pad?.up || pad?.left) && !this.gamepadDirectionHeld);
     const nextPressed =
-      (this.downKey ? Phaser.Input.Keyboard.JustDown(this.downKey) : false) ||
-      (this.rightKey ? Phaser.Input.Keyboard.JustDown(this.rightKey) : false) ||
+      (this.inputActions?.consume('nav-down', { cooldownMs: 120 }) ?? false) ||
+      (this.inputActions?.consume('nav-right', { cooldownMs: 120 }) ?? false) ||
       (Boolean(pad?.down || pad?.right) && !this.gamepadDirectionHeld);
 
     this.gamepadConfirmHeld = padConfirmDown;
@@ -333,16 +335,7 @@ export class PauseMenuScene extends Phaser.Scene {
   }
 
   private registerInput(): void {
-    const keyboard = this.input.keyboard;
-    if (!keyboard) {
-      throw new Error('Keyboard input is required for the pause menu.');
-    }
-    this.escapeKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
-    this.enterKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
-    this.upKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.UP);
-    this.downKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN);
-    this.leftKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT);
-    this.rightKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT);
+    this.inputActions = InputActionManager.forScene(this);
   }
 
   private openConfirmation(): void {
@@ -404,6 +397,9 @@ export class PauseMenuScene extends Phaser.Scene {
     if (this.scene.isActive(this.sourceSceneKey) || this.scene.isPaused(this.sourceSceneKey)) {
       this.scene.stop(this.sourceSceneKey);
     }
-    this.scene.start('MainMenuScene');
+    this.transitionController?.start('MainMenuScene', undefined, {
+      durationMs: 220,
+      label: '拓片收卷 · 返回主菜单',
+    });
   }
 }

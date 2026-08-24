@@ -5,6 +5,7 @@ export interface TombFeelConfig {
     readonly speed: number;
     readonly acceleration: number;
     readonly deceleration: number;
+    readonly reverseAcceleration: number;
   };
   readonly camera: {
     readonly followLerpX: number;
@@ -119,15 +120,16 @@ export interface TombFeelConfig {
 
 export const TOMB_FEEL: TombFeelConfig = {
   movement: {
-    speed: 188,
-    acceleration: 2800,
-    deceleration: 3600,
+    speed: 165,
+    acceleration: 1375,
+    deceleration: 1650,
+    reverseAcceleration: 2357,
   },
   camera: {
-    followLerpX: 0.095,
-    followLerpY: 0.095,
-    deadzoneWidth: 84,
-    deadzoneHeight: 46,
+    followLerpX: 0.16,
+    followLerpY: 0.16,
+    deadzoneWidth: 96,
+    deadzoneHeight: 56,
   },
   interaction: {
     radiusMultiplier: 1.12,

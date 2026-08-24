@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { polishSceneTypography } from '../ui/gameTypography';
 import { DEFAULT_PLAYER_APPEARANCE_ID, isPlayerAppearanceId, type PlayerAppearanceId } from '../data/playerAppearances';
 import { SHOP_RELICS, type RelicDisposition } from '../data/shopRelics';
 import {
@@ -33,7 +34,14 @@ import { isPauseButtonPressed, openPauseMenu } from './PauseMenuScene';
 import { ShopAudioSystem } from '../systems/ShopAudioSystem';
 import { RelicCleaningController } from '../systems/RelicCleaningController';
 import { RelicInspectionController } from '../systems/RelicInspectionController';
+import { ClickMoveController } from '../systems/ClickMoveController';
+import { preloadClickMoveVisuals } from '../visuals/clickMoveVisuals';
 import { createShopWorldCue } from '../ui/createShopWorldCue';
+import { NARRATIVE_ART_TEXTURES, preloadNarrativeArt } from '../visuals/narrativeArt';
+import { InputActionManager } from '../input/InputActionManager';
+import { InteractionController } from '../systems/InteractionController';
+import { installSceneLoadingOverlay, markSceneInteractive } from '../systems/SceneTransitionController';
+import { InteractionDebugOverlay } from '../systems/InteractionDebugOverlay';
 
 const SERIF = VISUAL_THEME.fonts.serif;
 const SANS = VISUAL_THEME.fonts.sans;
@@ -79,15 +87,12 @@ export class ShopGrowthScene extends Phaser.Scene {
   private choiceIndex = 0;
   private cleaningController?: RelicCleaningController;
   private inspectionController?: RelicInspectionController;
+  private clickMove?: ClickMoveController;
   private evidenceFound = new Set<string>();
   private inputLockedUntil = 0;
-  private interactionKey?: Phaser.Input.Keyboard.Key;
-  private escapeKey?: Phaser.Input.Keyboard.Key;
-  private enterKey?: Phaser.Input.Keyboard.Key;
-  private leftKey?: Phaser.Input.Keyboard.Key;
-  private rightKey?: Phaser.Input.Keyboard.Key;
-  private upKey?: Phaser.Input.Keyboard.Key;
-  private downKey?: Phaser.Input.Keyboard.Key;
+  private inputActions?: InputActionManager;
+  private interactionController?: InteractionController<Station>;
+  private interactionDebug?: InteractionDebugOverlay;
 
   constructor() { super('ShopGrowthScene'); }
 
@@ -97,11 +102,25 @@ export class ShopGrowthScene extends Phaser.Scene {
   }
 
   preload(): void {
+    installSceneLoadingOverlay(this);
+    preloadClickMoveVisuals(this);
     preloadPlayerAvatarAssets(this); preloadShopkeeperAssets(this); preloadAntiqueShopInteriorAssets(this);
     preloadRelicRestorationAssets(this);
+    preloadNarrativeArt(this);
   }
 
   create(): void {
+    this.inputActions = InputActionManager.forScene(this);
+    this.interactionController = new InteractionController(this, { stickMs: 250 });
+    this.interactionDebug = new InteractionDebugOverlay(this, {
+      player: () => this.player,
+      target: () => this.nearby ?? '',
+      dragging: () => this.cleaningController?.isDragging()
+        ? 'cleaning'
+        : this.inspectionController?.isDragging()
+          ? 'inspection'
+          : '',
+    });
     this.audio = new ShopAudioSystem();
     const settlement = this.incomingSettlement ?? ShopProgressSystem.createFallbackSettlement();
     ShopProgressSystem.consumeSettlement(settlement);
@@ -120,23 +139,38 @@ export class ShopGrowthScene extends Phaser.Scene {
       this.appearanceId,
     );
     this.physics.add.collider(this.player, this.interior.obstacles);
+    this.clickMove = new ClickMoveController(this, this.player, {
+      obstacles: () => this.interior?.obstacles.getChildren() ?? [],
+      isEnabled: () => !this.focusMode && Boolean(this.player?.isMovementEnabled()),
+      screenExclusions: [
+        new Phaser.Geom.Rectangle(0, 0, 370, 115),
+        new Phaser.Geom.Rectangle(0, 635, 1280, 85),
+      ],
+      clearance: 19,
+      depth: 18,
+    });
     this.createShopObjects();
     this.createHud();
     this.registerInput();
     this.restoreFromData();
     this.refreshState();
-    this.cameras.main.fadeIn(450, 8, 6, 4);
+    polishSceneTypography(this);
+    this.cameras.main.fadeIn(260, 8, 6, 4);
+    markSceneInteractive(this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanup, this);
   }
 
   update(): void {
-    if (!this.player || !this.interactionKey || !this.escapeKey || !this.enterKey || !this.leftKey || !this.rightKey) return;
-    const escape = Phaser.Input.Keyboard.JustDown(this.escapeKey);
-    const confirm = Phaser.Input.Keyboard.JustDown(this.interactionKey) || Phaser.Input.Keyboard.JustDown(this.enterKey);
-    const left = Phaser.Input.Keyboard.JustDown(this.leftKey);
-    const right = Phaser.Input.Keyboard.JustDown(this.rightKey);
-    const up = Boolean(this.upKey && Phaser.Input.Keyboard.JustDown(this.upKey));
-    const down = Boolean(this.downKey && Phaser.Input.Keyboard.JustDown(this.downKey));
+    if (!this.player || !this.inputActions) return;
+    this.inputActions.setContext(this.focusMode ? `shop-focus:${this.focusMode}` : 'shop-growth-world');
+    const escape = this.inputActions.consume('cancel');
+    const confirm = this.inputActions.consume('confirm');
+    const left = this.inputActions.consume('nav-left', { cooldownMs: 120 });
+    const right = this.inputActions.consume('nav-right', { cooldownMs: 120 });
+    const up = this.inputActions.consume('nav-up', { cooldownMs: 120 });
+    const down = this.inputActions.consume('nav-down', { cooldownMs: 120 });
+    this.clickMove?.update(this.time.now);
+    this.interactionDebug?.update(this.time.now);
     if (this.focusMode) {
       this.cleaningController?.update(this.time.now);
       this.inspectionController?.update(this.time.now, this.input.activePointer);
@@ -216,6 +250,9 @@ export class ShopGrowthScene extends Phaser.Scene {
   }
 
   private createStation(id: StationId, x: number, y: number, radius: number, name: string, action: string): void {
+    // Authored station centers often sit inside their furniture collider. Give
+    // the player's foot collider a small reachable interaction margin.
+    const reachableRadius = radius + 24;
     const cue = createShopWorldCue(this, radius * 1.35, 58)
       .setPosition(x, y)
       .setVisible(false);
@@ -224,7 +261,31 @@ export class ShopGrowthScene extends Phaser.Scene {
     const verb = this.add.text(-50, 10, action, { fontFamily: SANS, fontSize: '12px', color: SHOP_UI.colors.muted }).setOrigin(0, 0.5);
     const prompt = this.add.container(x, y - 68, [createStyleBoardPanel(this, 200, 52, 'thin', SHOP_UI.alpha.prompt), key, title, verb])
       .setDepth(12).setVisible(false);
-    this.stations.set(id, { id, x, y, radius, name, action, prompt, cue });
+    const station = { id, x, y, radius: reachableRadius, name, action, prompt, cue };
+    this.stations.set(id, station);
+    this.add.zone(x, y, radius * 1.35, radius * 1.1)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerup', () => {
+        if (!this.stationAvailable(id)) return;
+        if (this.nearby === id && this.time.now >= this.inputLockedUntil) {
+          this.interactionController?.acknowledge(cue);
+          this.handleStation(id);
+          this.inputLockedUntil = this.time.now + 160;
+        } else {
+          const moving = this.clickMove?.moveNear(x, y, reachableRadius, () => {
+            if (!this.stationAvailable(id) || this.focusMode) return;
+            const distance = this.player
+              ? Phaser.Math.Distance.Between(this.player.x, this.player.y, x, y)
+              : Infinity;
+            if (distance > reachableRadius + 14) return;
+            this.updateNearby();
+            this.interactionController?.acknowledge(cue);
+            this.handleStation(id);
+            this.inputLockedUntil = this.time.now + 160;
+          });
+          if (!moving) this.interactionController?.rejectAt(x, y - 58, '这边被挡住了，换个方向试试');
+        }
+      });
   }
 
   private createHud(): void {
@@ -235,18 +296,13 @@ export class ShopGrowthScene extends Phaser.Scene {
     this.toastText = this.add.text(0, 0, '', { fontFamily: SERIF, fontSize: '16px', color: SHOP_UI.colors.text, align: 'center', wordWrap: { width: 600 } }).setOrigin(0.5);
     this.toast = this.add.container(640, 654, [createStyleBoardPanel(this, 660, 54, 'standard', 0.94), this.toastText])
       .setScrollFactor(0).setDepth(30).setVisible(false);
+    this.add.text(640, 700, 'WASD / 鼠标点击地面  移动', {
+      fontFamily: SANS, fontSize: '13px', color: SHOP_UI.colors.muted,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(25);
   }
 
   private registerInput(): void {
-    const k = this.input.keyboard;
-    if (!k) throw new Error('古玩店养成模式需要键盘输入。');
-    this.interactionKey = k.addKey(Phaser.Input.Keyboard.KeyCodes.E);
-    this.escapeKey = k.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
-    this.enterKey = k.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
-    this.leftKey = k.addKey(Phaser.Input.Keyboard.KeyCodes.A);
-    this.rightKey = k.addKey(Phaser.Input.Keyboard.KeyCodes.D);
-    this.upKey = k.addKey(Phaser.Input.Keyboard.KeyCodes.W);
-    this.downKey = k.addKey(Phaser.Input.Keyboard.KeyCodes.S);
+    this.inputActions = InputActionManager.forScene(this);
   }
 
   private restoreFromData(): void {
@@ -275,14 +331,17 @@ export class ShopGrowthScene extends Phaser.Scene {
   private updateNearby(): void {
     if (!this.player) return;
     const previousNearby = this.nearby;
-    let nearest: Station | undefined; let distance = Infinity;
+    const candidates: Array<{ id: string; value: Station; score: number }> = [];
     for (const station of this.stations.values()) {
       const active = this.stationAvailable(station.id);
       const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, station.x, station.y);
-      const selected = active && d <= station.radius && d < distance;
-      if (selected) { nearest = station; distance = d; }
+      if (active && d <= station.radius) candidates.push({ id: station.id, value: station, score: d });
       station.prompt.setVisible(false);
-      station.cue.setVisible(active && (selected || this.isGuidedStation(station.id)));
+      station.cue.setVisible(active && this.isGuidedStation(station.id));
+    }
+    const nearest = this.interactionController?.select(candidates);
+    for (const station of this.stations.values()) {
+      if (station.id === nearest?.id) station.cue.setVisible(true);
     }
     this.nearby = nearest?.id;
     if (nearest) {
@@ -470,6 +529,7 @@ export class ShopGrowthScene extends Phaser.Scene {
       this.openInspection();
     });
     layer.add(stop); this.styleChoice(stop, true);
+    polishSceneTypography(this);
   }
 
   private openInspection(): void {
@@ -524,6 +584,7 @@ export class ShopGrowthScene extends Phaser.Scene {
       },
     );
     refreshEvidence();
+    polishSceneTypography(this);
   }
 
   private openAppraisal(): void {
@@ -539,6 +600,7 @@ export class ShopGrowthScene extends Phaser.Scene {
     const cards = def.conclusions.map((c, i) => this.createChoiceCard(870, 285 + i * 145, 470, 105, this.conclusionChinese(def.id, i), i, () => this.confirmAppraisal(i)));
     layer.add(cards); this.choiceIndex = 0; cards.forEach((c, i) => this.styleChoice(c, i === 0));
     layer.setData('choiceCards', cards);
+    polishSceneTypography(this);
   }
 
   private confirmAppraisal(index: number): void {
@@ -579,6 +641,7 @@ export class ShopGrowthScene extends Phaser.Scene {
     ];
     const cards = choices.map((c, i) => this.createChoiceCard(365 + (i % 2) * 550, 285 + Math.floor(i / 2) * 190, 490, 145, `${c.title}\n${c.body}`, i, () => this.selectDisposition(c.d)));
     layer.add(cards); this.choiceIndex = 0; cards.forEach((c, i) => this.styleChoice(c, i === 0)); layer.setData('choiceCards', cards); layer.setData('dispositions', choices.map((x) => x.d));
+    polishSceneTypography(this);
   }
 
   private selectDisposition(disposition: RelicDisposition): void {
@@ -642,16 +705,33 @@ export class ShopGrowthScene extends Phaser.Scene {
     const p = ShopProgressSystem.getProgress();
     const layer = this.beginFocus('atlas', 'AtlasEvent');
     this.addFocusHeader(layer, '《万字藏图》', '这些墨迹指向的不是下一座墓，而是店里的某个位置。');
-    const page = this.add.rectangle(640, 400, 720, 480, SHOP_UI.colors.paper, 1).setStrokeStyle(2, 0x5f432c);
-    const ink = this.add.graphics(); ink.lineStyle(5, 0x3d2b1e, 0.8).strokeRect(410, 235, 460, 300).lineBetween(560, 235, 560, 535).lineBetween(720, 235, 720, 535).strokeCircle(790, 390, 38);
-    const mark = this.add.circle(790, 390, 12, SHOP_UI.colors.cinnabar, 0.9);
-    layer.add([page, ink, mark, this.add.text(640, 565, p.atlasPage === 0 ? '第一页正在显字……图上的展示柜，恰好压在前室壁龛的位置上。' : '第一页画着店铺的一角。朱砂标记，仍然指向那座展示柜。', { fontFamily: SERIF, fontSize: '18px', color: '#38271b' }).setOrigin(0.5)]);
+    const frame = createStyleBoardPanel(this, 950, 514, 'carved', 0.98).setPosition(640, 394);
+    const page = this.add.image(640, 394, NARRATIVE_ART_TEXTURES.myriadAtlasReveal).setDisplaySize(930, 494);
+    const developingPage = this.add
+      .image(640, 394, NARRATIVE_ART_TEXTURES.myriadAtlasReveal)
+      .setDisplaySize(930, 494)
+      .setTint(0x342e27)
+      .setAlpha(p.atlasPage === 0 ? 0.92 : 0);
+    const captionBg = createStyleBoardPanel(this, 860, 62, 'thin', 0.94).setPosition(640, 645);
+    const caption = this.add.text(640, 645, p.atlasPage === 0
+      ? '墨线从纸纤维里缓慢渗出：店里的展示柜，正压在墓室前室壁龛的位置上。'
+      : '残页上的店铺与墓室彼此叠映，朱砂印仍压在那座展示柜上。', {
+      fontFamily: SERIF, fontSize: '17px', color: SHOP_UI.colors.text, align: 'center', wordWrap: { width: 800 },
+    }).setOrigin(0.5);
+    layer.add([frame, page, developingPage, captionBg, caption]);
     if (p.atlasPage === 0) {
-      ink.setAlpha(0); mark.setAlpha(0);
-      this.tweens.add({ targets: ink, alpha: 1, duration: 1500, onComplete: () => this.tweens.add({ targets: mark, alpha: 1, scale: { from: 1.8, to: 1 }, duration: 450, onComplete: () => {
-        ShopProgressSystem.unlockFirstGrowth(); this.growthCabinet?.setVisible(true); this.growthCurtain?.setVisible(true); this.audio?.playSfx('transition');
-      } }) });
+      page.setAlpha(0.28);
+      this.tweens.add({
+        targets: page, alpha: 1, duration: 1900, ease: 'Sine.InOut',
+      });
+      this.tweens.add({
+        targets: developingPage, alpha: 0, duration: 2300, ease: 'Sine.InOut',
+        onComplete: () => {
+          ShopProgressSystem.unlockFirstGrowth(); this.growthCabinet?.setVisible(true); this.growthCurtain?.setVisible(true); this.audio?.playSfx('transition');
+        },
+      });
     }
+    polishSceneTypography(this);
   }
 
   private revealGrowth(): void {
@@ -900,5 +980,5 @@ export class ShopGrowthScene extends Phaser.Scene {
     return index === 0 ? '普通流通铜钱' : '供桌仪式排列中的方位标记';
   }
 
-  private cleanup(): void { this.clearFocusOnly(); this.audio?.destroy(); this.atmosphere?.destroy(); this.player?.setMovementEnabled(false); }
+  private cleanup(): void { this.clearFocusOnly(); this.clickMove?.destroy(); this.clickMove = undefined; this.audio?.destroy(); this.atmosphere?.destroy(); this.player?.setMovementEnabled(false); }
 }

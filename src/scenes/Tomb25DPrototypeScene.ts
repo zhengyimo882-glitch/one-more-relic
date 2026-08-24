@@ -8,6 +8,7 @@ import {
 } from '../data/tomb25DAssetManifest';
 import { Player } from '../objects/Player';
 import { preloadPlayerAvatarAssets } from '../visuals/createPlayerAvatarVisual';
+import { polishSceneTypography } from '../ui/gameTypography';
 
 const WORLD_WIDTH = 1600;
 const WORLD_HEIGHT = 1050;
@@ -71,6 +72,7 @@ export class Tomb25DPrototypeScene extends Phaser.Scene {
     this.createPlayer();
     this.createCamera();
     this.createPrototypeUI();
+    polishSceneTypography(this);
     this.refreshCollisionDebug();
 
     this.input.keyboard?.on('keydown-F3', () => {

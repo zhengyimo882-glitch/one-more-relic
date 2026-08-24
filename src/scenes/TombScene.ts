@@ -37,6 +37,8 @@ import {
 } from '../systems/TombEncounterSystem';
 import { WallShadowSystem } from '../systems/WallShadowSystem';
 import { TombDynamicShadowSystem } from '../systems/TombDynamicShadowSystem';
+import { ClickMoveController } from '../systems/ClickMoveController';
+import { preloadClickMoveVisuals } from '../visuals/clickMoveVisuals';
 import type { TombPointLight, TombShadowCaster } from '../types/TombLighting';
 import {
   FootstepRippleSystem,
@@ -68,10 +70,25 @@ import {
 } from '../visuals/createCeremonialTombGate';
 import {
   CORRIDOR_MURAL_TEXTURES,
+  MURAL_DISCOVERY_UI_TEXTURES,
   createTombCorridorMurals,
   type TombCorridorMuralPanel,
   type TombCorridorMurals,
 } from '../visuals/createTombCorridorMurals';
+import { InputActionManager } from '../input/InputActionManager';
+import { InteractionController } from '../systems/InteractionController';
+import {
+  SceneTransitionController,
+  installSceneLoadingOverlay,
+  markSceneInteractive,
+} from '../systems/SceneTransitionController';
+import { InteractionDebugOverlay } from '../systems/InteractionDebugOverlay';
+import {
+  BilingualTextReveal,
+  polishSceneTypography,
+  revealPanel,
+  setTypographyRole,
+} from '../ui/gameTypography';
 
 const WORLD_WIDTH = 1600;
 const WORLD_HEIGHT = 1664;
@@ -129,6 +146,7 @@ const GENERATED_TOMB_ASSET_ROOT = 'assets/generated/tomb_vertical_slice';
 const ORIGINAL_CORRIDOR_ASSET_ROOT = 'assets/generated/tomb_corridor_original';
 const TOMB_RITUAL_ART_ROOT = 'assets/generated/tomb_ritual_v2';
 const TOMB_MURAL_ART_ROOT = 'assets/tomb_murals';
+const MURAL_DISCOVERY_UI_ROOT = 'assets/generated/mural_discovery_ui_v1';
 const ORIGINAL_ARTIFACT_ASSET_ROOT = 'assets/generated/tomb_artifacts_original';
 const ORIGINAL_ARTIFACT_TEXTURES = {
   burialVessel: 'original-burial-vessel',
@@ -407,6 +425,7 @@ export class TombScene extends Phaser.Scene {
   private proceduralAudio?: ProceduralTombAudioSystem;
   private wallShadow?: WallShadowSystem;
   private dynamicShadowSystem?: TombDynamicShadowSystem;
+  private clickMove?: ClickMoveController;
   private footstepRipples?: FootstepRippleSystem;
   private tutorialPhase: TutorialTombPhase = 'entering';
   private compassHasBeenRetrieved = false;
@@ -432,7 +451,15 @@ export class TombScene extends Phaser.Scene {
   private muralDiscoveryChineseTitle?: Phaser.GameObjects.Text;
   private muralDiscoveryEnglishBody?: Phaser.GameObjects.Text;
   private muralDiscoveryChineseBody?: Phaser.GameObjects.Text;
+  private muralDiscoveryMeta?: Phaser.GameObjects.Text;
+  private muralDiscoveryCounter?: Phaser.GameObjects.Text;
+  private muralDiscoveryAccent?: Phaser.GameObjects.Rectangle;
+  private muralDiscoveryChrome?: Phaser.GameObjects.Image;
+  private muralDiscoveryLightSweep?: Phaser.GameObjects.Rectangle;
+  private muralDiscoveryTextGroup?: Phaser.GameObjects.Container;
+  private muralDiscoveryCloseHitArea?: Phaser.GameObjects.Rectangle;
   private muralDiscoveryActive = false;
+  private muralDiscoveryClosing = false;
   private tombMapVeil?: Phaser.GameObjects.Graphics;
   private roomRevealVeils: RoomRevealVeil[] = [];
   private revealedRoomIds = new Set<TombRoomId>();
@@ -460,14 +487,12 @@ export class TombScene extends Phaser.Scene {
   private cellarEntryNotice?: Phaser.GameObjects.Container;
   private mainMapVeilWasVisible = false;
   private ambientOverlay?: Phaser.GameObjects.Graphics;
-  private interactionKey?: Phaser.Input.Keyboard.Key;
-  private escapeKey?: Phaser.Input.Keyboard.Key;
-  private enterKey?: Phaser.Input.Keyboard.Key;
-  private backpackKey?: Phaser.Input.Keyboard.Key;
-  private backpackUpKey?: Phaser.Input.Keyboard.Key;
-  private backpackDownKey?: Phaser.Input.Keyboard.Key;
-  private backpackSlotOneKey?: Phaser.Input.Keyboard.Key;
-  private backpackSlotTwoKey?: Phaser.Input.Keyboard.Key;
+  private inputActions?: InputActionManager;
+  private interactionController?: InteractionController<InteractionTarget>;
+  private transitionController?: SceneTransitionController;
+  private cameraLookAheadX = 0;
+  private cameraLookAheadY = 0;
+  private interactionDebug?: InteractionDebugOverlay;
   private instructionText?: Phaser.GameObjects.Text;
   private escapeHintText?: Phaser.GameObjects.Text;
   private locationTitleEnglish?: Phaser.GameObjects.Text;
@@ -525,6 +550,7 @@ export class TombScene extends Phaser.Scene {
   private arrivalPanel?: Phaser.GameObjects.Container;
   private arrivalEnglishText?: Phaser.GameObjects.Text;
   private arrivalChineseText?: Phaser.GameObjects.Text;
+  private arrivalTextReveal?: BilingualTextReveal;
   private arrivalBag?: Phaser.GameObjects.Container;
   private atmosphere?: ProceduralAtmosphere;
   private previousCanvasImageRendering = '';
@@ -566,6 +592,8 @@ export class TombScene extends Phaser.Scene {
   }
 
   preload(): void {
+    installSceneLoadingOverlay(this);
+    preloadClickMoveVisuals(this);
     preloadPlayerAvatarAssets(this);
     this.load.image(
       REFINED_TOMB_TEXTURE,
@@ -630,6 +658,10 @@ export class TombScene extends Phaser.Scene {
       `${TOMB_MURAL_ART_ROOT}/mural_oath.jpg`,
     );
     this.load.image(
+      MURAL_DISCOVERY_UI_TEXTURES.chrome,
+      `${MURAL_DISCOVERY_UI_ROOT}/mural_discovery_chrome.png`,
+    );
+    this.load.image(
       ORIGINAL_ARTIFACT_TEXTURES.burialVessel,
       `${ORIGINAL_ARTIFACT_ASSET_ROOT}/burial_vessel.png`,
     );
@@ -670,6 +702,17 @@ export class TombScene extends Phaser.Scene {
     this.addTextureFrames('tomb-main-sheet', MAIN_TEXTURE_FRAMES);
     this.addTextureFrames('tomb-decorative-sheet', DECORATIVE_TEXTURE_FRAMES);
     this.addTextureFrames(CELLAR_PROPS_TEXTURE, CELLAR_PROP_FRAMES);
+    const muralChromeTexture = this.textures.get(MURAL_DISCOVERY_UI_TEXTURES.chrome);
+    if (!muralChromeTexture.has(MURAL_DISCOVERY_UI_TEXTURES.wallMarkerFrame)) {
+      muralChromeTexture.add(
+        MURAL_DISCOVERY_UI_TEXTURES.wallMarkerFrame,
+        0,
+        120,
+        0,
+        390,
+        255,
+      );
+    }
 
     const textureKeys = [
       'tomb-main-sheet',
@@ -743,6 +786,12 @@ export class TombScene extends Phaser.Scene {
     this.previousCanvasImageRendering = this.game.canvas.style.imageRendering;
     this.game.canvas.style.imageRendering = 'pixelated';
     this.resetTombState();
+    this.inputActions = InputActionManager.forScene(this);
+    this.interactionController = new InteractionController(this, {
+      stickMs: 250,
+      switchAdvantage: 16,
+    });
+    this.transitionController = new SceneTransitionController(this, this.inputActions);
     this.investigableObjects = [];
     this.artifactSpots = [];
     this.nearbyInteraction = undefined;
@@ -775,6 +824,18 @@ export class TombScene extends Phaser.Scene {
     this.createEntranceGate(obstacles);
     this.player = this.createPlayer();
     this.physics.add.collider(this.player, obstacles);
+    this.clickMove = new ClickMoveController(this, this.player, {
+      obstacles: () => obstacles.getChildren(),
+      isEnabled: () => this.canUseClickMovement(),
+      screenExclusions: [
+        new Phaser.Geom.Rectangle(0, 0, 390, 250),
+        new Phaser.Geom.Rectangle(1000, 0, 280, 245),
+        new Phaser.Geom.Rectangle(0, 625, 1280, 95),
+      ],
+      cellSize: 32,
+      clearance: 20,
+      depth: 62,
+    });
 
     this.configureCamera();
     this.proceduralAudio = new ProceduralTombAudioSystem();
@@ -799,37 +860,37 @@ export class TombScene extends Phaser.Scene {
     this.createInterface();
     this.createCellarDiscoveryPanel();
     this.createMuralDiscoveryPanel();
+    this.input.on('pointerup', this.handleMuralPointerUp, this);
     this.registerInput();
     this.createDebugTools();
+    this.interactionDebug = new InteractionDebugOverlay(this, {
+      player: () => this.player,
+      target: () => this.nearbyInteraction?.stableId ?? '',
+      dragging: () => this.cellarTransitionActive ? 'map-transition' : '',
+    });
     this.startArrivalIntroduction();
+    polishSceneTypography(this);
+    markSceneInteractive(this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanupTombScene, this);
   }
 
   update(time: number, delta: number): void {
-    if (
-      !this.player ||
-      !this.interactionKey ||
-      !this.escapeKey ||
-      !this.enterKey ||
-      !this.backpackKey ||
-      !this.backpackUpKey ||
-      !this.backpackDownKey ||
-      !this.backpackSlotOneKey ||
-      !this.backpackSlotTwoKey
-    ) {
+    if (!this.player || !this.inputActions) {
       return;
     }
 
-    const interactionPressed = Phaser.Input.Keyboard.JustDown(this.interactionKey);
-    const escapePressed = Phaser.Input.Keyboard.JustDown(this.escapeKey);
+    this.inputActions.setContext(this.getInputContext());
+    const interactionPressed = this.inputActions.consume('confirm');
+    const escapePressed = this.inputActions.consume('cancel');
     const pausePressed = escapePressed || isPauseButtonPressed(this);
-    const enterPressed = Phaser.Input.Keyboard.JustDown(this.enterKey);
-    const backpackPressed = Phaser.Input.Keyboard.JustDown(this.backpackKey);
-    const backpackUpPressed = Phaser.Input.Keyboard.JustDown(this.backpackUpKey);
-    const backpackDownPressed = Phaser.Input.Keyboard.JustDown(this.backpackDownKey);
-    const backpackSlotOnePressed = Phaser.Input.Keyboard.JustDown(this.backpackSlotOneKey);
-    const backpackSlotTwoPressed = Phaser.Input.Keyboard.JustDown(this.backpackSlotTwoKey);
+    const enterPressed = false;
+    const backpackPressed = this.inputActions.consume('inventory');
+    const backpackUpPressed = this.inputActions.consume('nav-up', { cooldownMs: 120 });
+    const backpackDownPressed = this.inputActions.consume('nav-down', { cooldownMs: 120 });
+    const backpackSlotOnePressed = this.inputActions.consume('slot-1');
+    const backpackSlotTwoPressed = this.inputActions.consume('slot-2');
     this.atmosphere?.update(this.player.x, this.player.y, time);
+    this.clickMove?.update(time);
     const deltaSeconds = delta / 1000;
     this.roomExplorationPoints.forEach((point) => point.candle.update(time));
     this.updateCorridorEntrance(time);
@@ -867,14 +928,16 @@ export class TombScene extends Phaser.Scene {
 
     if (this.arrivalIntroductionActive) {
       if (interactionPressed || enterPressed) {
-        this.advanceArrivalIntroduction();
+        this.requestArrivalIntroductionAdvance();
       }
       return;
     }
 
     if (this.tutorialPhase === 'completed') {
-      if (interactionPressed || enterPressed || escapePressed) {
+      if (interactionPressed || enterPressed) {
         this.transitionToShopReturn();
+      } else if (pausePressed) {
+        openPauseMenu(this);
       }
       return;
     }
@@ -953,6 +1016,7 @@ export class TombScene extends Phaser.Scene {
     this.updateAmbientFeedback(time, deltaSeconds);
     this.updateEncounterSystems(time, delta);
     this.updateDebugTools();
+    this.interactionDebug?.update(time);
 
     if (this.activeInvestigation) {
       if (backpackPressed) {
@@ -992,6 +1056,7 @@ export class TombScene extends Phaser.Scene {
     }
 
     this.player.update();
+    this.updateCameraFollow(deltaSeconds);
     this.player.setAimAngle(lampAimAngle);
     this.player.setDepth(PLAYER_DEPTH_BASE + this.player.y / 1000);
     this.updateRoomRevealState();
@@ -1075,6 +1140,7 @@ export class TombScene extends Phaser.Scene {
     this.corridorMurals = undefined;
     this.corridorMuralPrompts.clear();
     this.muralDiscoveryActive = false;
+    this.muralDiscoveryClosing = false;
     this.backpackMenuActive = false;
     this.backpackSelectionIndex = 0;
     this.tombMapVeil = undefined;
@@ -1423,41 +1489,58 @@ export class TombScene extends Phaser.Scene {
   }
 
   private createArrivalPanel(): void {
-    const background = createStyleBoardPanel(this, 1120, 180, 'carved', 0.985);
-    const title = this.add.text(-520, -67, 'ARRIVAL', {
+    const background = createStyleBoardPanel(this, 1120, 206, 'carved', 0.985);
+    const title = this.add.text(-520, -80, 'ARRIVAL', {
       fontFamily: SANS_FONT,
-      fontSize: '13px',
+      fontSize: '14px',
       fontStyle: 'bold',
       color: UI_STYLE_BOARD.colors.textBright,
       letterSpacing: 1,
     });
-    const chineseTitle = this.add.text(-520, -49, '抵达', {
+    setTypographyRole(title, 'dialogue-speaker-light');
+    const chineseTitle = this.add.text(-520, -58, '抵达', {
       fontFamily: SANS_FONT,
-      fontSize: '12px',
+      fontSize: '14px',
       color: UI_STYLE_BOARD.colors.muted,
     });
-    this.arrivalEnglishText = this.add.text(-520, -23, '', {
+    setTypographyRole(chineseTitle, 'meta-light');
+    this.arrivalEnglishText = this.add.text(-520, -29, '', {
       fontFamily: SERIF_FONT,
-      fontSize: '16px',
+      fontSize: '19px',
       color: UI_STYLE_BOARD.colors.textBright,
       lineSpacing: 2,
       wordWrap: { width: 850 },
     });
-    this.arrivalChineseText = this.add.text(-520, 22, '', {
+    setTypographyRole(this.arrivalEnglishText, 'dialogue-body-light');
+    this.arrivalChineseText = this.add.text(-520, 27, '', {
       fontFamily: SERIF_FONT,
-      fontSize: '13px',
+      fontSize: '16px',
       fontStyle: 'bold',
       color: UI_STYLE_BOARD.colors.text,
       lineSpacing: 2,
       wordWrap: { width: 820 },
     });
+    setTypographyRole(this.arrivalChineseText, 'dialogue-translation-light');
+    this.arrivalTextReveal = new BilingualTextReveal(
+      this,
+      this.arrivalEnglishText,
+      this.arrivalChineseText,
+      () => {
+        if (this.arrivalEnglishText && this.arrivalChineseText) {
+          this.arrivalChineseText.setY(
+            this.arrivalEnglishText.y + this.arrivalEnglishText.height + 8,
+          );
+        }
+      },
+    );
     const continueText = this.add
-      .text(500, 69, 'E / ENTER  CONTINUE / 继续', {
+      .text(500, 82, 'E / ENTER  CONTINUE / 继续', {
         fontFamily: SANS_FONT,
-        fontSize: '12px',
+        fontSize: '13px',
         color: '#d4ad63',
       })
       .setOrigin(1, 0.5);
+    setTypographyRole(continueText, 'hint-light');
     this.arrivalPanel = this.add
       .container(this.scale.width / 2, 154, [
         background,
@@ -1468,7 +1551,24 @@ export class TombScene extends Phaser.Scene {
         continueText,
       ])
       .setScrollFactor(0)
-      .setDepth(30);
+      .setDepth(30)
+      .setSize(1120, 206)
+      .setInteractive({ useHandCursor: true })
+      .on(
+        'pointerup',
+        (
+          _pointer: Phaser.Input.Pointer,
+          _localX: number,
+          _localY: number,
+          event: Phaser.Types.Input.EventData,
+        ) => {
+          event.stopPropagation();
+          if (this.arrivalIntroductionActive) {
+            this.requestArrivalIntroductionAdvance();
+          }
+        },
+      );
+    revealPanel(this, this.arrivalPanel);
   }
 
   private showArrivalIntroductionBeat(): void {
@@ -1491,13 +1591,12 @@ export class TombScene extends Phaser.Scene {
       },
     ];
     const beat = beats[this.arrivalIntroductionIndex];
-    this.arrivalEnglishText?.setText(beat.english);
-    this.arrivalChineseText?.setText(beat.chinese);
-    if (this.arrivalEnglishText && this.arrivalChineseText) {
-      this.arrivalChineseText.setY(
-        this.arrivalEnglishText.y + this.arrivalEnglishText.displayHeight + 7,
-      );
-    }
+    this.arrivalTextReveal?.show(beat.english, beat.chinese);
+  }
+
+  private requestArrivalIntroductionAdvance(): void {
+    if (this.arrivalTextReveal?.complete()) return;
+    this.advanceArrivalIntroduction();
   }
 
   private advanceArrivalIntroduction(): void {
@@ -1509,6 +1608,8 @@ export class TombScene extends Phaser.Scene {
     this.arrivalIntroductionActive = false;
     this.arrivalPanel?.destroy(true);
     this.arrivalPanel = undefined;
+    this.arrivalTextReveal?.destroy();
+    this.arrivalTextReveal = undefined;
     this.arrivalBag?.destroy(true);
     this.arrivalBag = undefined;
     this.activeLocationTitle?.container.destroy(true);
@@ -1742,9 +1843,29 @@ export class TombScene extends Phaser.Scene {
     this.wallShadow?.destroy();
     this.corridorMurals?.destroy();
     this.ceremonialGate?.destroy();
+    this.clickMove?.destroy();
+    this.clickMove = undefined;
+    this.arrivalTextReveal?.destroy();
+    this.arrivalTextReveal = undefined;
     this.tombMapVeil?.destroy();
     this.roomRevealVeils.forEach((veil) => veil.graphics.destroy());
     this.input.keyboard?.off('keydown', this.ensureAudioStarted, this);
+    this.input.off('pointerup', this.handleMuralPointerUp, this);
+  }
+
+  private canUseClickMovement(): boolean {
+    return Boolean(
+      this.player?.isMovementEnabled() &&
+      !this.arrivalIntroductionActive &&
+      this.tutorialPhase !== 'completed' &&
+      this.tutorialPhase !== 'departure-confirmation' &&
+      !this.cellarTransitionActive &&
+      !this.candleLightingActive &&
+      !this.cellarDiscoveryActive &&
+      !this.muralDiscoveryActive &&
+      !this.backpackMenuActive &&
+      !this.activeInvestigation,
+    );
   }
 
   private configureCamera(): void {
@@ -1860,7 +1981,7 @@ export class TombScene extends Phaser.Scene {
       .text(
         width / 2,
         height - 44,
-        'WASD  Move / 移动     E  Interact / 互动     TAB  Backpack / 背包',
+        'WASD / 鼠标点击地面  移动     E  互动     TAB  背包',
         {
         fontFamily: SANS_FONT,
         fontSize: '14px',
@@ -2091,6 +2212,19 @@ export class TombScene extends Phaser.Scene {
         artifact.originalSpotId !== null &&
         artifact.hasBeenDisturbed,
     );
+  }
+
+  private updateCameraFollow(deltaSeconds: number): void {
+    if (!this.player || this.activeInvestigation || this.cellarTransitionActive) return;
+    const velocity = this.player.getMovementVelocity();
+    const targetX = Phaser.Math.Clamp(velocity.x * 0.13, -22, 22);
+    const targetY = Phaser.Math.Clamp(velocity.y * 0.1, -16, 16);
+    const response = 1 - Math.exp(-deltaSeconds * 8.5);
+    this.cameraLookAheadX = Phaser.Math.Linear(this.cameraLookAheadX, targetX, response);
+    this.cameraLookAheadY = Phaser.Math.Linear(this.cameraLookAheadY, targetY, response);
+    if (Math.abs(this.cameraLookAheadX) < 0.05) this.cameraLookAheadX = 0;
+    if (Math.abs(this.cameraLookAheadY) < 0.05) this.cameraLookAheadY = 0;
+    this.cameras.main.setFollowOffset(-this.cameraLookAheadX, -this.cameraLookAheadY);
   }
 
   private isArtifactRestored(artifact: InvestigableObject): boolean {
@@ -2696,21 +2830,21 @@ export class TombScene extends Phaser.Scene {
   }
 
   private registerInput(): void {
-    const keyboard = this.input.keyboard;
-    if (!keyboard) {
-      throw new Error('Keyboard input is required for tomb interactions.');
-    }
+    this.inputActions = InputActionManager.forScene(this);
+    this.input.keyboard?.on('keydown', this.ensureAudioStarted, this);
+  }
 
-    this.interactionKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
-    this.escapeKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
-    this.enterKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
-    this.backpackKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TAB);
-    this.backpackUpKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
-    this.backpackDownKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
-    this.backpackSlotOneKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
-    this.backpackSlotTwoKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO);
-    keyboard.addCapture(Phaser.Input.Keyboard.KeyCodes.TAB);
-    keyboard.on('keydown', this.ensureAudioStarted, this);
+  private getInputContext(): string {
+    if (this.tutorialPhase === 'transition-to-shop' || this.cellarTransitionActive) return 'transition';
+    if (this.arrivalIntroductionActive) return 'tomb-arrival-dialogue';
+    if (this.tutorialPhase === 'completed') return 'tomb-completed';
+    if (this.tutorialPhase === 'departure-confirmation') return 'tomb-departure-confirm';
+    if (this.cellarDiscoveryActive) return 'tomb-cellar-discovery';
+    if (this.muralDiscoveryActive) return 'tomb-mural-discovery';
+    if (this.backpackMenuActive) return 'tomb-backpack';
+    if (this.activeInvestigation) return `tomb-investigation:${this.activeInvestigation.id}`;
+    if (this.candleLightingActive) return 'tomb-candle-action';
+    return 'tomb-world';
   }
 
   private drawTombGreybox(): void {
@@ -3044,8 +3178,8 @@ export class TombScene extends Phaser.Scene {
       const prompt = createStyleBoardPrompt(
         this,
         'E',
-        'Inspect Mural / 查看壁画',
-        220,
+        '揭开残画 / Examine',
+        190,
         42,
       )
         .setPosition(mural.worldX < ROOM_CENTER_X ? 704 : 896, mural.worldY - 74)
@@ -3057,65 +3191,100 @@ export class TombScene extends Phaser.Scene {
 
   private createMuralDiscoveryPanel(): void {
     const { width, height } = this.scale;
-    const scrim = this.add.rectangle(-width / 2, -height / 2, width, height, 0x080706, 0.86)
+    const scrim = this.add.rectangle(-width / 2, -height / 2, width, height, 0x050504, 1)
       .setOrigin(0);
-    const background = createStyleBoardPanel(this, 1180, 680, 'carved', 0.995);
-    const previewFrame = createStyleBoardPanel(this, 860, 648, 'standard', 0.92).setX(-150);
     this.muralDiscoveryPreview = this.add
-      .image(-150, 0, CORRIDOR_MURAL_TEXTURES.leftUpper)
-      .setDisplaySize(820, 615);
-    const revealLabel = this.add.text(305, -300, 'MURAL REVEALED / 壁画释义', {
+      .image(-105, -4, CORRIDOR_MURAL_TEXTURES.leftUpper)
+      .setDisplaySize(700, 520);
+    const pigmentShade = this.add
+      .rectangle(-105, -4, 714, 532, 0x1b120b, 0.08)
+      .setStrokeStyle(1, 0xb18a50, 0.32);
+    this.muralDiscoveryLightSweep = this.add
+      .rectangle(-390, -8, 125, 540, 0xe5c78a, 0.11)
+      .setRotation(-0.13)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.muralDiscoveryChrome = this.add
+      .image(0, 0, MURAL_DISCOVERY_UI_TEXTURES.chrome, '__BASE')
+      .setDisplaySize(width, height);
+
+    this.muralDiscoveryMeta = this.add.text(360, -246, 'MURAL RECORD', {
       fontFamily: SANS_FONT,
-      fontSize: '13px',
+      fontSize: '12px',
       fontStyle: 'bold',
       color: UI_STYLE_BOARD.colors.muted,
-      letterSpacing: 1,
+      letterSpacing: 0.8,
     }).setOrigin(0, 0.5);
-    this.muralDiscoveryEnglishTitle = this.add.text(305, -258, '', {
+    setTypographyRole(this.muralDiscoveryMeta, 'meta-light');
+    this.muralDiscoveryCounter = this.add.text(530, -246, '壹 / 肆', {
       fontFamily: SERIF_FONT,
-      fontSize: '25px',
+      fontSize: '13px',
+      color: '#b99a69',
+    }).setOrigin(1, 0.5);
+    setTypographyRole(this.muralDiscoveryCounter, 'meta-light');
+    this.muralDiscoveryAccent = this.add.rectangle(360, -215, 170, 2, 0xa84b36, 0.92)
+      .setOrigin(0, 0.5);
+    this.muralDiscoveryChineseTitle = this.add.text(360, -190, '', {
+      fontFamily: SERIF_FONT,
+      fontSize: '30px',
       fontStyle: 'bold',
-      color: UI_STYLE_BOARD.colors.textBright,
-      wordWrap: { width: 250, useAdvancedWrap: true },
+      color: '#e1ba70',
+      wordWrap: { width: 210, useAdvancedWrap: true },
     }).setOrigin(0, 0);
-    this.muralDiscoveryChineseTitle = this.add.text(305, -204, '', {
+    setTypographyRole(this.muralDiscoveryChineseTitle, 'dialogue-body-light');
+    this.muralDiscoveryEnglishTitle = this.add.text(362, -147, '', {
       fontFamily: SERIF_FONT,
-      fontSize: '24px',
-      fontStyle: 'bold',
-      color: '#d4ad63',
-    }).setOrigin(0, 0.5);
-    const rule = this.add.rectangle(305, -174, 250, 2, 0x8b6a3d, 0.72).setOrigin(0, 0.5);
-    this.muralDiscoveryEnglishBody = this.add.text(305, -144, '', {
-      fontFamily: SANS_FONT,
       fontSize: '15px',
-      color: UI_STYLE_BOARD.colors.text,
-      lineSpacing: 6,
-      wordWrap: { width: 250, useAdvancedWrap: true },
+      fontStyle: 'bold',
+      color: '#cdbb9b',
+      wordWrap: { width: 205, useAdvancedWrap: true },
     }).setOrigin(0, 0);
-    this.muralDiscoveryChineseBody = this.add.text(305, 44, '', {
+    setTypographyRole(this.muralDiscoveryEnglishTitle, 'meta-light');
+    this.muralDiscoveryChineseBody = this.add.text(360, -92, '', {
       fontFamily: SANS_FONT,
       fontSize: '16px',
-      color: '#c8b99b',
+      color: '#eadbc0',
       lineSpacing: 7,
-      wordWrap: { width: 250, useAdvancedWrap: true },
+      wordWrap: { width: 210, useAdvancedWrap: true },
     }).setOrigin(0, 0);
-    const hint = this.add.text(540, 310, 'E / ESC  收起壁画', {
+    setTypographyRole(this.muralDiscoveryChineseBody, 'dialogue-translation-light');
+    this.muralDiscoveryEnglishBody = this.add.text(360, 42, '', {
       fontFamily: SANS_FONT,
-      fontSize: '14px',
-      color: UI_STYLE_BOARD.colors.muted,
-    }).setOrigin(1, 0.5);
+      fontSize: '12px',
+      color: '#a99b84',
+      lineSpacing: 4,
+      wordWrap: { width: 210, useAdvancedWrap: true },
+    }).setOrigin(0, 0);
+    setTypographyRole(this.muralDiscoveryEnglishBody, 'meta-light');
+    const hint = this.add.text(455, 278, 'E / ESC  收起残画', {
+      fontFamily: SANS_FONT,
+      fontSize: '13px',
+      color: '#cbb38b',
+    }).setOrigin(0.5);
+    setTypographyRole(hint, 'hint-light');
+    const closeZone = this.add.rectangle(455, 278, 238, 54, 0x000000, 0.001)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerover', () => hint.setColor('#ffe0a1'))
+      .on('pointerout', () => hint.setColor('#aaa087'))
+      .on('pointerup', () => this.closeMuralDiscovery());
+    this.muralDiscoveryCloseHitArea = closeZone;
+    this.muralDiscoveryTextGroup = this.add.container(0, 0, [
+      this.muralDiscoveryMeta,
+      this.muralDiscoveryCounter,
+      this.muralDiscoveryAccent,
+      this.muralDiscoveryChineseTitle,
+      this.muralDiscoveryEnglishTitle,
+      this.muralDiscoveryChineseBody,
+      this.muralDiscoveryEnglishBody,
+      hint,
+    ]);
     this.muralDiscoveryPanel = this.add.container(width / 2, height / 2, [
       scrim,
-      background,
-      previewFrame,
       this.muralDiscoveryPreview,
-      revealLabel,
-      this.muralDiscoveryEnglishTitle,
-      this.muralDiscoveryChineseTitle,
-      rule,
-      this.muralDiscoveryEnglishBody,
-      this.muralDiscoveryChineseBody,
-      hint,
+      pigmentShade,
+      this.muralDiscoveryLightSweep,
+      this.muralDiscoveryChrome,
+      this.muralDiscoveryTextGroup,
+      closeZone,
     ]).setScrollFactor(0).setDepth(37).setVisible(false);
   }
 
@@ -3124,38 +3293,116 @@ export class TombScene extends Phaser.Scene {
       return;
     }
     this.muralDiscoveryActive = true;
+    this.muralDiscoveryClosing = false;
     this.player.setMovementEnabled(false);
     this.nearbyInteraction = undefined;
     this.updateInteractionPrompt();
     this.muralDiscoveryPreview?.setTexture(mural.textureKey);
+    if (this.muralDiscoveryPreview) {
+      const source = this.textures.get(mural.textureKey).getSourceImage() as
+        | HTMLImageElement
+        | HTMLCanvasElement;
+      const fit = Math.min(720 / source.width, 520 / source.height);
+      this.muralDiscoveryPreview.setDisplaySize(source.width * fit, source.height * fit);
+      this.muralDiscoveryPreview.setData('revealScaleX', this.muralDiscoveryPreview.scaleX);
+      this.muralDiscoveryPreview.setData('revealScaleY', this.muralDiscoveryPreview.scaleY);
+    }
     this.muralDiscoveryEnglishTitle?.setText(mural.englishName.toUpperCase());
     this.muralDiscoveryChineseTitle?.setText(mural.chineseName);
     this.muralDiscoveryEnglishBody?.setText(mural.description);
     this.muralDiscoveryChineseBody?.setText(mural.chineseDescription);
-    if (this.muralDiscoveryEnglishBody && this.muralDiscoveryChineseBody) {
-      this.muralDiscoveryChineseBody.setY(
-        this.muralDiscoveryEnglishBody.y +
-          this.muralDiscoveryEnglishBody.displayHeight +
-          18,
-      );
+    const muralIndex = Math.max(
+      0,
+      (this.corridorMurals?.getPanels() ?? []).findIndex((panel) => panel.id === mural.id),
+    );
+    const accentColors: Record<TombCorridorMuralPanel['id'], number> = {
+      'soul-guide': 0xb24f38,
+      'tomb-guardian': 0x58725b,
+      'crane-crossing': 0xb28d4f,
+      'underworld-court': 0x627780,
+    };
+    this.muralDiscoveryCounter?.setText(
+      `${String(muralIndex + 1).padStart(2, '0')} / 04`,
+    );
+    this.muralDiscoveryAccent?.setFillStyle(accentColors[mural.id], 0.95);
+
+    this.tweens.killTweensOf([
+      this.muralDiscoveryPanel,
+      this.muralDiscoveryPreview,
+      this.muralDiscoveryChrome,
+      this.muralDiscoveryTextGroup,
+      this.muralDiscoveryLightSweep,
+    ]);
+    this.muralDiscoveryPanel.setVisible(true).setAlpha(1).setScale(1);
+    const previewScaleX = this.muralDiscoveryPreview?.getData('revealScaleX') as number | undefined;
+    const previewScaleY = this.muralDiscoveryPreview?.getData('revealScaleY') as number | undefined;
+    if (this.muralDiscoveryPreview && previewScaleX && previewScaleY) {
+      this.muralDiscoveryPreview
+        .setAlpha(0)
+        .setScale(previewScaleX * 1.035, previewScaleY * 1.035);
     }
-    this.muralDiscoveryPanel.setVisible(true).setAlpha(0).setScale(0.97);
+    this.muralDiscoveryChrome?.setAlpha(0).setY(-7);
+    this.muralDiscoveryTextGroup?.setAlpha(0).setX(22);
+    this.muralDiscoveryLightSweep?.setX(-410).setAlpha(0);
     this.tweens.add({
-      targets: this.muralDiscoveryPanel,
+      targets: this.muralDiscoveryChrome,
       alpha: 1,
-      scaleX: 1,
-      scaleY: 1,
-      duration: 200,
+      y: 0,
+      duration: 240,
       ease: 'Cubic.Out',
+    });
+    this.tweens.add({
+      targets: this.muralDiscoveryPreview,
+      alpha: 1,
+      scaleX: previewScaleX,
+      scaleY: previewScaleY,
+      duration: 320,
+      ease: 'Sine.Out',
+    });
+    this.tweens.add({
+      targets: this.muralDiscoveryTextGroup,
+      alpha: 1,
+      x: 0,
+      delay: 100,
+      duration: 260,
+      ease: 'Cubic.Out',
+    });
+    this.tweens.add({
+      targets: this.muralDiscoveryLightSweep,
+      x: 180,
+      alpha: { from: 0, to: 0.22 },
+      delay: 120,
+      duration: 720,
+      ease: 'Sine.InOut',
+      onComplete: () => this.muralDiscoveryLightSweep?.setAlpha(0),
     });
     this.proceduralAudio?.playCue('correct');
   }
 
   private closeMuralDiscovery(): void {
-    this.muralDiscoveryActive = false;
-    this.muralDiscoveryPanel?.setVisible(false);
-    this.player?.setMovementEnabled(true);
-    this.updateNearestInteraction();
+    if (!this.muralDiscoveryActive || this.muralDiscoveryClosing) return;
+    this.muralDiscoveryClosing = true;
+    this.tweens.add({
+      targets: this.muralDiscoveryPanel,
+      alpha: 0,
+      duration: 160,
+      ease: 'Sine.In',
+      onComplete: () => {
+        this.muralDiscoveryActive = false;
+        this.muralDiscoveryClosing = false;
+        this.muralDiscoveryPanel?.setVisible(false).setAlpha(1);
+        this.player?.setMovementEnabled(true);
+        this.updateNearestInteraction();
+      },
+    });
+  }
+
+  private handleMuralPointerUp(pointer: Phaser.Input.Pointer): void {
+    if (!this.muralDiscoveryActive || !this.muralDiscoveryCloseHitArea) return;
+    const bounds = this.muralDiscoveryCloseHitArea.getBounds();
+    if (bounds.contains(pointer.x, pointer.y)) {
+      this.closeMuralDiscovery();
+    }
   }
 
   private createFloor(): void {
@@ -4197,7 +4444,13 @@ export class TombScene extends Phaser.Scene {
       return left.stableId.localeCompare(right.stableId);
     });
 
-    this.nearbyInteraction = candidates[0];
+    this.nearbyInteraction = this.interactionController?.select(
+      candidates.map((candidate, index) => ({
+        id: candidate.stableId,
+        value: candidate,
+        score: index * 100 + candidate.distance * 0.001,
+      })),
+    ) ?? candidates[0];
     this.updateInteractionPrompt();
   }
 
@@ -4647,8 +4900,8 @@ export class TombScene extends Phaser.Scene {
     this.updateInteractionPrompt();
     this.player.setMovementEnabled(false);
     this.cellarEntryNotice?.setVisible(false);
-    this.cameras.main.fadeOut(420, 0, 0, 0);
-    this.time.delayedCall(440, () => {
+    this.cameras.main.fadeOut(300, 0, 0, 0);
+    this.time.delayedCall(310, () => {
       if (!this.player) {
         return;
       }
@@ -4698,8 +4951,8 @@ export class TombScene extends Phaser.Scene {
         TOMB_FEEL.camera.followLerpX,
         TOMB_FEEL.camera.followLerpY,
       );
-      this.cameras.main.fadeIn(460, 0, 0, 0);
-      this.time.delayedCall(480, () => {
+      this.cameras.main.fadeIn(300, 0, 0, 0);
+      this.time.delayedCall(310, () => {
         this.cellarTransitionActive = false;
         this.player?.setMovementEnabled(true);
         this.updateNearestInteraction();
@@ -4904,14 +5157,15 @@ export class TombScene extends Phaser.Scene {
     const settlement = this.tombSettlement ?? ShopProgressSystem.createFirstTombSettlement(
       this.determineDepartureChoice() === 'empty' ? null : this.determineDepartureChoice(),
     );
-    this.cameras.main.fadeOut(650, 8, 7, 5);
-    this.time.delayedCall(700, () => {
-      this.scene.start('AntiqueShopScene', {
+    this.transitionController?.start(
+      'AntiqueShopScene',
+      {
         departureChoice: this.departureChoice ?? 'empty',
         settlement,
         appearanceId: this.appearanceId,
-      });
-    });
+      },
+      { durationMs: 220, label: '拓片显影 · 返回古玩店' },
+    );
   }
 
   private isSealedCoffin(artifact: InvestigableObject): boolean {
@@ -5504,7 +5758,7 @@ export class TombScene extends Phaser.Scene {
       toggle: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F3),
       reset: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F6),
       offeringRoom: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F7),
-      corridor: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F8),
+      corridor: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F9),
     };
     this.debugText = this.add
       .text(430, 112, '', {
@@ -5564,7 +5818,7 @@ export class TombScene extends Phaser.Scene {
       `ECHO: ${rippleDebug?.lastEchoX?.toFixed(0) ?? '-'},${rippleDebug?.lastEchoY?.toFixed(0) ?? '-'}  FOLLOWER: ${rippleDebug?.lastFollowerX?.toFixed(0) ?? '-'},${rippleDebug?.lastFollowerY?.toFixed(0) ?? '-'}`,
       `RIPPLES: ${rippleDebug?.activeFootsteps ?? 0}/${rippleDebug?.poolSize ?? 0} footsteps  ${rippleDebug?.activeRings ?? 0} rings`,
       `FOOTSTEPS: ${TOMB_FEEL.footsteps.presentation}`,
-      'F6 reset  F7 offering room  F8 corridor',
+      'F6 reset  F7 offering room  F9 corridor  F8 interaction overlay',
     ]);
     this.debugPath?.clear();
     this.debugPath?.fillStyle(0x65c6ba, 0.48);
