@@ -4,13 +4,14 @@ import {
   type ShopkeeperVisual,
 } from '../../visuals/createShopkeeperVisual';
 import { createShopWorldCue } from '../../ui/createShopWorldCue';
+import { ART_TOKENS } from '../../config/artTokens';
 
 export const ANTIQUE_SHOP_WIDTH = 1280;
 export const ANTIQUE_SHOP_HEIGHT = 720;
 
 const SHOP_ART_ROOT = 'assets/generated/antique_shop_original_v2';
 const SHOP_TOPDOWN_ART_ROOT = 'assets/generated/antique_shop_topdown_v1';
-const TOMB_ART_ROOT = 'assets/generated/tomb_artifacts_original';
+const TOMB_ART_ROOT = 'assets/art-v2/artifacts/world';
 
 export const SHOP_INTERIOR_TEXTURES = {
   background: 'shop-topdown-v1-background',
@@ -93,25 +94,23 @@ export function preloadAntiqueShopInteriorAssets(scene: Phaser.Scene): void {
   );
   loadImage(
     SHOP_INTERIOR_TEXTURES.burialVessel,
-    `${TOMB_ART_ROOT}/burial_vessel.png`,
+    `${TOMB_ART_ROOT}/burial-vessel-v2-world.png`,
   );
   loadImage(
     SHOP_INTERIOR_TEXTURES.bronzeMirror,
-    `${TOMB_ART_ROOT}/bronze_mirror.png`,
+    `${TOMB_ART_ROOT}/bronze-mirror-v2-world.png`,
   );
   loadImage(
     SHOP_INTERIOR_TEXTURES.geomancersCompass,
-    `${TOMB_ART_ROOT}/geomancers_compass.png`,
+    `${TOMB_ART_ROOT}/geomancers-compass-v2-world.png`,
   );
 }
 
 export function antiqueShopDepthFromGround(
-  _groundAnchorWorldY: number,
+  groundAnchorWorldY: number,
   depthOffset = 0,
 ): number {
-  // The redesigned shop is a strict orthographic 2D map. Scene objects use
-  // fixed render layers instead of simulating depth from their Y coordinate.
-  return 4 + depthOffset;
+  return ART_TOKENS.depth.fromFootY(groundAnchorWorldY, depthOffset);
 }
 
 export function createAntiqueShopInterior(
@@ -128,7 +127,9 @@ export function createAntiqueShopInterior(
     .setDepth(-2);
 
   const shopkeeperVisual = createShopkeeperVisual(scene, counterX, 112);
-  const shopkeeper = shopkeeperVisual.container.setDepth(4.2);
+  const shopkeeper = shopkeeperVisual.container.setDepth(
+    antiqueShopDepthFromGround(112),
+  );
   const interactionHighlight = createInteractionHighlight(scene);
 
   // Collision footprints match the furniture painted into the orthographic

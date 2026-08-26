@@ -76,6 +76,7 @@ import {
   type TombCorridorMurals,
 } from '../visuals/createTombCorridorMurals';
 import { InputActionManager } from '../input/InputActionManager';
+import { localize } from '../i18n/gameLanguage';
 import { InteractionController } from '../systems/InteractionController';
 import {
   SceneTransitionController,
@@ -89,6 +90,13 @@ import {
   revealPanel,
   setTypographyRole,
 } from '../ui/gameTypography';
+import {
+  ARTIFACT_VISUALS,
+  getArtifactVisual,
+  preloadArtifactVisuals,
+} from '../data/artifactVisualManifest';
+import { createArtPanel, preloadArtPanels } from '../ui/artPanel';
+import { UI_TOKENS } from '../config/uiTokens';
 
 const WORLD_WIDTH = 1600;
 const WORLD_HEIGHT = 1664;
@@ -97,6 +105,7 @@ const REFINED_TOMB_ART_ROOT = 'assets/generated/tomb_refined_v1';
 const REFINED_TOMB_TEXTURE = 'tomb-refined-fullmap';
 const CELLAR_ART_ROOT = 'assets/generated/tomb_cellar_v1';
 const CELLAR_ROOM_TEXTURE = 'hidden-cellar-room';
+const CELLAR_ROOM_V2_PATH = 'assets/art-v2/scenes/hidden-cellar-room-v2.png';
 const CELLAR_PROPS_TEXTURE = 'hidden-cellar-props';
 const GRID_SIZE = 32;
 const PIXEL_SCALE = 2;
@@ -521,6 +530,7 @@ export class TombScene extends Phaser.Scene {
   private panelAppraisalTitle?: Phaser.GameObjects.Text;
   private panelAppraisalText?: Phaser.GameObjects.Text;
   private panelChineseAppraisalText?: Phaser.GameObjects.Text;
+  private panelArtifactImage?: Phaser.GameObjects.Image;
   private panelCarryAction?: Phaser.GameObjects.Text;
   private panelSwapDescription?: Phaser.GameObjects.Text;
   private panelSwapChineseDescription?: Phaser.GameObjects.Text;
@@ -528,6 +538,7 @@ export class TombScene extends Phaser.Scene {
   private carriedEnglishName?: Phaser.GameObjects.Text;
   private carriedChineseName?: Phaser.GameObjects.Text;
   private carriedSlotTexts: Phaser.GameObjects.Text[] = [];
+  private carriedSlotImages: Phaser.GameObjects.Image[] = [];
   private carryUI?: Phaser.GameObjects.Container;
   private backpackMenu?: Phaser.GameObjects.Container;
   private backpackMenuActive = false;
@@ -535,6 +546,8 @@ export class TombScene extends Phaser.Scene {
   private backpackMenuCountText?: Phaser.GameObjects.Text;
   private backpackMenuSlotPanels: Phaser.GameObjects.Graphics[] = [];
   private backpackMenuSlotTexts: Phaser.GameObjects.Text[] = [];
+  private backpackMenuSlotImages: Phaser.GameObjects.Image[] = [];
+  private backpackMenuDetailImage?: Phaser.GameObjects.Image;
   private backpackMenuDetailName?: Phaser.GameObjects.Text;
   private backpackMenuDetailChineseName?: Phaser.GameObjects.Text;
   private backpackMenuDetailState?: Phaser.GameObjects.Text;
@@ -595,11 +608,13 @@ export class TombScene extends Phaser.Scene {
     installSceneLoadingOverlay(this);
     preloadClickMoveVisuals(this);
     preloadPlayerAvatarAssets(this);
+    preloadArtifactVisuals(this);
+    preloadArtPanels(this);
     this.load.image(
       REFINED_TOMB_TEXTURE,
       `${REFINED_TOMB_ART_ROOT}/tomb_refined_fullmap.png`,
     );
-    this.load.image(CELLAR_ROOM_TEXTURE, `${CELLAR_ART_ROOT}/hidden_cellar_room.png`);
+    this.load.image(CELLAR_ROOM_TEXTURE, CELLAR_ROOM_V2_PATH);
     this.load.image(CELLAR_PROPS_TEXTURE, `${CELLAR_ART_ROOT}/cellar_props.png`);
     this.load.spritesheet(
       'generated-tomb-ghost',
@@ -2281,9 +2296,9 @@ export class TombScene extends Phaser.Scene {
 
   private createShopkeeperMessage(): void {
     const { width, height } = this.scale;
-    const background = createStyleBoardPanel(this, 920, 172, 'carved', 0.985);
+    const background = createStyleBoardPanel(this, 720, 132, 'carved', 0.97);
     const title = this.add
-      .text(-424, -61, 'SHOPKEEPER  /', {
+      .text(-324, -44, 'SHOPKEEPER  /', {
         fontFamily: SANS_FONT,
         fontSize: '13px',
         fontStyle: 'bold',
@@ -2292,32 +2307,32 @@ export class TombScene extends Phaser.Scene {
       })
       .setOrigin(0, 0.5);
     const chineseTitle = this.add
-      .text(-306, -61, '古玩店老板', {
+      .text(-206, -44, '古玩店老板', {
         fontFamily: SANS_FONT,
         fontSize: '12px',
         color: UI_STYLE_BOARD.colors.muted,
       })
       .setOrigin(0, 0.5);
     this.shopkeeperMessageText = this.add
-      .text(-424, -36, '', {
+      .text(-324, -21, '', {
         fontFamily: SANS_FONT,
         fontSize: '16px',
         color: UI_STYLE_BOARD.colors.textBright,
-        wordWrap: { width: 848 },
+        wordWrap: { width: 648 },
       })
       .setOrigin(0, 0);
     this.shopkeeperChineseMessageText = this.add
-      .text(-424, 13, '', {
+      .text(-324, 16, '', {
         fontFamily: SANS_FONT,
         fontSize: '14px',
         fontStyle: 'bold',
         color: UI_STYLE_BOARD.colors.text,
-        wordWrap: { width: 848 },
+        wordWrap: { width: 648 },
       })
       .setOrigin(0, 0);
 
     this.shopkeeperMessage = this.add
-      .container(width / 2, height - 142, [
+      .container(width / 2, height - 112, [
         background,
         title,
         chineseTitle,
@@ -2421,9 +2436,15 @@ export class TombScene extends Phaser.Scene {
 
     const slotOne = createStyleBoardPanel(this, 252, 34, 'thin', 0.74).setY(-13);
     const slotTwo = createStyleBoardPanel(this, 252, 34, 'thin', 0.74).setY(31);
+    this.carriedSlotImages = [-13, 31].map((y) =>
+      this.add
+        .image(-104, y, ARTIFACT_VISUALS['burial-vessel'].inventoryTexture)
+        .setDisplaySize(30, 30)
+        .setVisible(false),
+    );
     this.carriedSlotTexts = [-13, 31].map((y, index) =>
       this.add
-        .text(-116, y, `${index + 1}  EMPTY / 空`, {
+        .text(-84, y, `${index + 1}  EMPTY / 空`, {
           fontFamily: SANS_FONT,
           fontSize: '14px',
           color: UI_STYLE_BOARD.colors.muted,
@@ -2439,6 +2460,7 @@ export class TombScene extends Phaser.Scene {
         this.carryCountText,
         slotOne,
         slotTwo,
+        ...this.carriedSlotImages,
         ...this.carriedSlotTexts,
       ])
       .setScrollFactor(0)
@@ -2455,6 +2477,10 @@ export class TombScene extends Phaser.Scene {
     this.carriedSlotTexts.forEach((text, index) => {
       const artifact = carriedArtifacts[index];
       const inHand = artifact?.id === this.carrySystem.getActiveArtifactId();
+      const visual = artifact ? getArtifactVisual(artifact.id) : undefined;
+      this.carriedSlotImages[index]
+        ?.setVisible(Boolean(visual))
+        .setTexture(visual?.inventoryTexture ?? ARTIFACT_VISUALS['burial-vessel'].inventoryTexture);
       text.setText(
         artifact
           ? `${index + 1}  ${inHand ? '[HAND] ' : ''}${artifact.englishName} / ${artifact.chineseName}`
@@ -2474,12 +2500,12 @@ export class TombScene extends Phaser.Scene {
     const { width, height } = this.scale;
     const scrim = this.add.rectangle(-width / 2, -height / 2, width, height, 0x070604, 0.82)
       .setOrigin(0);
-    const background = createStyleBoardPanel(this, 820, 480, 'carved', 0.995);
+    const background = createArtPanel(this, 860, 500, 'dark', 0.995);
     const title = this.add.text(-360, -196, 'BACKPACK', {
       fontFamily: SERIF_FONT, fontSize: '30px', fontStyle: 'bold', color: UI_STYLE_BOARD.colors.textBright,
     }).setOrigin(0, 0.5);
-    const chineseTitle = this.add.text(-118, -194, '背包', {
-      fontFamily: SERIF_FONT, fontSize: '22px', color: '#d4ad63',
+    const chineseTitle = this.add.text(-360, -196, '背包', {
+      fontFamily: SERIF_FONT, fontSize: '30px', fontStyle: 'bold', color: UI_STYLE_BOARD.colors.textBright,
     }).setOrigin(0, 0.5);
     this.backpackMenuCountText = this.add.text(354, -194, '', {
       fontFamily: SANS_FONT, fontSize: '15px', color: UI_STYLE_BOARD.colors.muted,
@@ -2488,15 +2514,20 @@ export class TombScene extends Phaser.Scene {
     const children: Phaser.GameObjects.GameObject[] = [scrim, background, title, chineseTitle, this.backpackMenuCountText];
     this.backpackMenuSlotPanels = [];
     this.backpackMenuSlotTexts = [];
+    this.backpackMenuSlotImages = [];
     for (let index = 0; index < this.carrySystem.capacity; index += 1) {
-      const y = -96 + index * 92;
+      const y = -86 + index * 112;
       const panel = this.add.graphics().setPosition(-170, y);
-      const text = this.add.text(-330, y, '', {
+      const image = this.add
+        .image(-302, y, ARTIFACT_VISUALS['burial-vessel'].inventoryTexture)
+        .setDisplaySize(78, 78)
+        .setVisible(false);
+      const text = this.add.text(-248, y, '', {
         fontFamily: SANS_FONT, fontSize: '17px', color: UI_STYLE_BOARD.colors.textBright,
       }).setOrigin(0, 0.5);
       panel
         .setInteractive(
-          new Phaser.Geom.Rectangle(-178, -34, 356, 68),
+          new Phaser.Geom.Rectangle(-178, -47, 356, 94),
           Phaser.Geom.Rectangle.Contains,
         )
         .on('pointerover', () => {
@@ -2511,32 +2542,40 @@ export class TombScene extends Phaser.Scene {
         });
       this.backpackMenuSlotPanels.push(panel);
       this.backpackMenuSlotTexts.push(text);
-      children.push(panel, text);
+      this.backpackMenuSlotImages.push(image);
+      children.push(panel, image, text);
     }
 
     const divider = this.add.rectangle(42, 18, 2, 310, 0x6f5736, 0.65);
     const detailLabel = this.add.text(76, -120, 'SELECTED ITEM / 当前器物', {
       fontFamily: SANS_FONT, fontSize: '13px', fontStyle: 'bold', color: UI_STYLE_BOARD.colors.muted,
     }).setOrigin(0, 0.5);
-    this.backpackMenuDetailName = this.add.text(76, -75, '', {
+    this.backpackMenuDetailImage = this.add
+      .image(220, -54, ARTIFACT_VISUALS['burial-vessel'].inventoryTexture)
+      .setDisplaySize(132, 132)
+      .setVisible(false);
+    this.backpackMenuDetailName = this.add.text(76, 28, '', {
       fontFamily: SERIF_FONT, fontSize: '23px', fontStyle: 'bold', color: UI_STYLE_BOARD.colors.textBright,
       wordWrap: { width: 280 },
     }).setOrigin(0, 0);
-    this.backpackMenuDetailChineseName = this.add.text(76, -36, '', {
+    this.backpackMenuDetailChineseName = this.add.text(76, 66, '', {
       fontFamily: SERIF_FONT, fontSize: '18px', color: UI_STYLE_BOARD.colors.text,
       wordWrap: { width: 280 },
     }).setOrigin(0, 0);
-    this.backpackMenuDetailState = this.add.text(76, 10, '', {
+    this.backpackMenuDetailState = this.add.text(76, 104, '', {
       fontFamily: SANS_FONT, fontSize: '14px', fontStyle: 'bold', color: '#829879',
     }).setOrigin(0, 0);
-    this.backpackMenuActionText = this.add.text(76, 78, '', {
+    this.backpackMenuActionText = this.add.text(76, 142, '', {
       fontFamily: SANS_FONT, fontSize: '16px', fontStyle: 'bold', color: '#d4ad63',
       wordWrap: { width: 280 },
     }).setOrigin(0, 0);
-    const navigation = this.add.text(-348, 192, 'W / S 或 1 / 2  选择     E  确认     TAB / ESC  关闭', {
+    const navigation = this.add.text(-348, 192, localize(
+      'W / S OR 1 / 2  SELECT     E  CONFIRM     TAB / ESC  CLOSE',
+      'W / S 或 1 / 2  选择     E  确认     TAB / ESC  关闭',
+    ), {
       fontFamily: SANS_FONT, fontSize: '14px', color: UI_STYLE_BOARD.colors.muted,
     }).setOrigin(0, 0.5);
-    children.push(divider, detailLabel, this.backpackMenuDetailName, this.backpackMenuDetailChineseName,
+    children.push(divider, detailLabel, this.backpackMenuDetailImage, this.backpackMenuDetailName, this.backpackMenuDetailChineseName,
       this.backpackMenuDetailState, this.backpackMenuActionText, navigation);
     this.backpackMenu = this.add.container(width / 2, height / 2, children)
       .setScrollFactor(0).setDepth(39).setVisible(false);
@@ -2548,15 +2587,24 @@ export class TombScene extends Phaser.Scene {
     this.backpackMenuCountText?.setText(`${artifacts.length} / ${this.carrySystem.capacity}`);
     this.backpackMenuSlotPanels.forEach((panel, index) => {
       const selected = index === this.backpackSelectionIndex;
-      drawStyleBoardPanel(panel, 356, 68, selected ? 'standard' : 'thin', selected ? 0.98 : 0.72);
+      drawStyleBoardPanel(panel, 356, 94, selected ? 'standard' : 'thin', selected ? 0.98 : 0.72);
       const artifact = artifacts[index];
       const inHand = artifact?.id === this.carrySystem.getActiveArtifactId();
+      const visual = artifact ? getArtifactVisual(artifact.id) : undefined;
+      this.backpackMenuSlotImages[index]
+        ?.setVisible(Boolean(visual))
+        .setTexture(visual?.inventoryTexture ?? ARTIFACT_VISUALS['burial-vessel'].inventoryTexture)
+        .setDisplaySize(visual?.inventorySlots === 2 ? 84 : 72, visual?.inventorySlots === 2 ? 84 : 72);
       this.backpackMenuSlotTexts[index]?.setText(artifact
-        ? `${index + 1}   ${artifact.englishName}\n     ${artifact.chineseName}${inHand ? '   [手持]' : ''}`
+        ? `${index + 1}  ${artifact.englishName}\n${artifact.chineseName}${inHand ? '   [手持]' : ''}`
         : `${index + 1}   EMPTY / 空`)
         .setColor(selected ? '#f0d8a2' : artifact ? UI_STYLE_BOARD.colors.text : UI_STYLE_BOARD.colors.muted);
     });
     const selected = artifacts[this.backpackSelectionIndex];
+    const selectedVisual = selected ? getArtifactVisual(selected.id) : undefined;
+    this.backpackMenuDetailImage
+      ?.setVisible(Boolean(selectedVisual))
+      .setTexture(selectedVisual?.inventoryTexture ?? ARTIFACT_VISUALS['burial-vessel'].inventoryTexture);
     const inHand = selected?.id === this.carrySystem.getActiveArtifactId();
     const storedOnly = selected?.id === 'myriad-character-atlas';
     this.backpackMenuDetailName?.setText(selected?.englishName ?? 'EMPTY SLOT');
@@ -2564,17 +2612,20 @@ export class TombScene extends Phaser.Scene {
     this.backpackMenuDetailState?.setText(
       selected ? storedOnly ? 'CORE RELIC / 核心物品' : inHand ? 'IN HAND / 当前手持' : 'STORED / 已收纳' : 'NO ITEM / 无物品',
     ).setColor(storedOnly ? '#8da58a' : inHand ? '#d4ad63' : '#829879');
-    this.backpackMenuActionText?.setText(!selected ? '这个栏位是空的' : inHand
-      ? 'E  STORE IN BACKPACK / 收回背包'
-      : storedOnly ? 'PROTECTED — CANNOT BE LEFT HERE / 核心物品不能留在墓里'
-      : 'E  HOLD THIS ITEM / 取出手持');
+    this.backpackMenuActionText?.setText(!selected
+      ? localize('THIS SLOT IS EMPTY', '这个栏位是空的')
+      : inHand
+        ? localize('E  STORE IN BACKPACK', 'E  收回背包')
+        : storedOnly
+          ? localize('PROTECTED — CANNOT BE LEFT HERE', '核心物品不能留在墓里')
+          : localize('E  HOLD THIS ITEM', 'E  取出手持'));
     if (
       this.backpackMenuDetailName &&
       this.backpackMenuDetailChineseName &&
       this.backpackMenuDetailState &&
       this.backpackMenuActionText
     ) {
-      this.backpackMenuDetailName.setY(-87);
+      this.backpackMenuDetailName.setY(28);
       this.backpackMenuDetailChineseName.setY(
         this.backpackMenuDetailName.y + this.backpackMenuDetailName.displayHeight + 7,
       );
@@ -2599,6 +2650,7 @@ export class TombScene extends Phaser.Scene {
       .findIndex((artifact) => artifact.id === this.carrySystem.getActiveArtifactId());
     this.backpackSelectionIndex = activeIndex >= 0 ? activeIndex : 0;
     this.updateBackpackMenu();
+    this.setHudDimmed(true);
     this.backpackMenu.setVisible(true).setAlpha(0).setScale(0.97);
     this.tweens.add({
       targets: this.backpackMenu, alpha: 1, scaleX: 1, scaleY: 1,
@@ -2609,6 +2661,7 @@ export class TombScene extends Phaser.Scene {
   private closeBackpackMenu(): void {
     this.backpackMenuActive = false;
     this.backpackMenu?.setVisible(false);
+    this.setHudDimmed(false);
     this.player?.setMovementEnabled(true);
     this.updateNearestInteraction();
   }
@@ -2633,9 +2686,18 @@ export class TombScene extends Phaser.Scene {
     this.closeBackpackMenu();
   }
 
+  private setHudDimmed(dimmed: boolean): void {
+    const alpha = dimmed ? UI_TOKENS.motion.hudDimAlpha : 1;
+    this.objectiveUI?.setAlpha(alpha);
+    this.carryUI?.setAlpha(alpha);
+    this.candleSkillUI?.setAlpha(alpha);
+    this.shopkeeperMessage?.setAlpha(alpha);
+    this.lampHintText?.setAlpha(alpha);
+  }
+
   private createDepartureConfirmation(): void {
     const { width, height } = this.scale;
-    const background = createStyleBoardPanel(this, 780, 400, 'carved', 0.99);
+    const background = createArtPanel(this, 800, 420, 'dark', 0.99);
     const title = this.add
       .text(0, -165, 'LEAVE THE TOMB?', {
         fontFamily: SERIF_FONT,
@@ -2738,6 +2800,7 @@ export class TombScene extends Phaser.Scene {
   private createDepartureResult(): void {
     const { width, height } = this.scale;
     const background = this.add.rectangle(0, 0, width, height, 0x0d0f0c, 0.985);
+    const resultFrame = createArtPanel(this, 1040, 650, 'dark', 0.98);
     const title = this.add
       .text(0, -260, 'THE FIRST RETRIEVAL', {
         fontFamily: SERIF_FONT,
@@ -2814,6 +2877,7 @@ export class TombScene extends Phaser.Scene {
     this.resultPanel = this.add
       .container(width / 2, height / 2, [
         background,
+        resultFrame,
         title,
         chineseTitle,
         returnedLabel,
@@ -3102,18 +3166,18 @@ export class TombScene extends Phaser.Scene {
 
   private createCellarDiscoveryPanel(): void {
     const { width, height } = this.scale;
-    const background = createStyleBoardPanel(this, 880, 450, 'carved', 0.995);
+    const background = createArtPanel(this, 900, 480, 'paper', 0.995);
     const anomalyBand = this.add.rectangle(-382, 0, 5, 390, 0x486d55, 0.95);
     const previewFrame = createStyleBoardPanel(this, 230, 280, 'standard', 0.88).setX(-248);
     const preview = this.add
-      .image(-248, 2, CELLAR_PROPS_TEXTURE, 'atlas')
-      .setDisplaySize(150, 190);
+      .image(-248, 2, ARTIFACT_VISUALS['myriad-character-atlas'].inspectionTexture)
+      .setDisplaySize(244, 183);
     const title = this.add
       .text(-90, -176, 'MYRIAD CHARACTER ATLAS', {
         fontFamily: SERIF_FONT,
         fontSize: '27px',
         fontStyle: 'bold',
-        color: UI_STYLE_BOARD.colors.textBright,
+        color: UI_TOKENS.theme.paper.text,
       })
       .setOrigin(0, 0.5);
     const chineseTitle = this.add
@@ -3121,7 +3185,7 @@ export class TombScene extends Phaser.Scene {
         fontFamily: SERIF_FONT,
         fontSize: '23px',
         fontStyle: 'bold',
-        color: '#a9c5ae',
+        color: '#55766c',
       })
       .setOrigin(0, 0.5);
     const body = this.add
@@ -3132,34 +3196,37 @@ export class TombScene extends Phaser.Scene {
         {
           fontFamily: SANS_FONT,
           fontSize: '16px',
-          color: UI_STYLE_BOARD.colors.text,
+          color: '#3d2a1d',
           lineSpacing: 8,
           wordWrap: { width: 430 },
         },
       )
       .setOrigin(0, 0);
     this.cellarDiscoveryAction = this.add
-      .text(-90, 164, 'E  STORE IN BACKPACK  /  收入背包', {
+      .text(-90, 146, 'E  STORE IN BACKPACK  /  收入背包', {
         fontFamily: SANS_FONT,
         fontSize: '15px',
         fontStyle: 'bold',
-        color: '#d4ad63',
+        color: '#6c351f',
+        wordWrap: { width: 430 },
+        maxLines: 3,
+        lineSpacing: 4,
       })
-      .setOrigin(0, 0.5);
+      .setOrigin(0, 0);
     this.cellarDiscoveryAction.setY(
-      Math.min(164, body.y + body.displayHeight + 28),
+      Math.min(146, body.y + body.displayHeight + 20),
     );
     const close = this.add
       .text(390, 194, 'ESC  Close / 关闭', {
         fontFamily: SANS_FONT,
         fontSize: '13px',
-        color: UI_STYLE_BOARD.colors.muted,
+        color: '#684a2f',
       })
       .setOrigin(1, 0.5);
-    this.cellarDiscoveryPanel = this.add
-      .container(width / 2, height / 2, [
-        background,
-        anomalyBand,
+      this.cellarDiscoveryPanel = this.add
+        .container(width / 2, height / 2, [
+          background,
+          anomalyBand,
         previewFrame,
         preview,
         title,
@@ -4084,8 +4151,8 @@ export class TombScene extends Phaser.Scene {
     aura.fillStyle(0x3c8f86, 0.12);
     aura.fillEllipse(0, 4, 128, 60);
     const atlas = this.add
-      .image(0, 0, CELLAR_PROPS_TEXTURE, 'atlas')
-      .setDisplaySize(48, 59)
+      .image(0, 0, ARTIFACT_VISUALS['myriad-character-atlas'].worldTexture)
+      .setDisplaySize(58, 58)
       .setOrigin(0.5, 0.82);
     const highlight = this.add.graphics();
     highlight.lineStyle(2, 0x79b6a6, 0.88);
@@ -4148,9 +4215,9 @@ export class TombScene extends Phaser.Scene {
     shadow.fillStyle(0x0b0d0b, 0.38);
     shadow.fillEllipse(0, 3, 58, 18);
     const vessel = this.add
-      .image(0, 0, ORIGINAL_ARTIFACT_TEXTURES.burialVessel)
+      .image(0, 0, ARTIFACT_VISUALS['burial-vessel'].worldTexture)
       .setOrigin(0.5, 0.95)
-      .setDisplaySize(65, 96);
+      .setDisplaySize(58, 58);
 
     const highlight = this.add.graphics();
     highlight.lineStyle(2, 0xc2b58f, 0.76);
@@ -4175,9 +4242,9 @@ export class TombScene extends Phaser.Scene {
     shadow.fillStyle(0x0b0d0b, 0.4);
     shadow.fillEllipse(0, 3, 72, 20);
     const mirror = this.add
-      .image(0, 0, ORIGINAL_ARTIFACT_TEXTURES.bronzeMirror)
+      .image(0, 0, ARTIFACT_VISUALS['bronze-mirror'].worldTexture)
       .setOrigin(0.5, 0.95)
-      .setDisplaySize(82, 112);
+      .setDisplaySize(62, 62);
 
     const highlight = this.add.graphics();
     highlight.lineStyle(3, 0xc2b58f, 0.7);
@@ -4202,9 +4269,9 @@ export class TombScene extends Phaser.Scene {
     shadow.fillStyle(0x0b0d0b, 0.36);
     shadow.fillEllipse(0, 7, 68, 18);
     const compass = this.add
-      .image(0, 0, ORIGINAL_ARTIFACT_TEXTURES.geomancersCompass)
+      .image(0, 0, ARTIFACT_VISUALS['geomancers-compass'].worldTexture)
       .setOrigin(0.5, 0.84)
-      .setDisplaySize(78, 68);
+      .setDisplaySize(62, 62);
 
     const highlight = this.add.graphics();
     highlight.lineStyle(3, 0xc2b58f, 0.72);
@@ -4527,14 +4594,18 @@ export class TombScene extends Phaser.Scene {
     const panelWidth = 960;
     const panelHeight = 560;
 
-    const background = createStyleBoardPanel(this, panelWidth, panelHeight, 'carved', 0.98);
+    const background = createArtPanel(this, panelWidth, panelHeight, 'paper', 0.99);
+    this.panelArtifactImage = this.add
+      .image(244, -12, ARTIFACT_VISUALS['burial-vessel'].inspectionTexture)
+      .setDisplaySize(430, 322)
+      .setVisible(false);
 
     this.panelEnglishName = this.add
       .text(-440, -244, '', {
         fontFamily: SERIF_FONT,
         fontSize: '28px',
         fontStyle: 'bold',
-        color: '#eee4c9',
+        color: UI_TOKENS.theme.paper.text,
       })
       .setOrigin(0, 0);
 
@@ -4542,7 +4613,7 @@ export class TombScene extends Phaser.Scene {
       .text(-440, -206, '', {
         fontFamily: SERIF_FONT,
         fontSize: '17px',
-        color: '#9da38b',
+        color: '#684a2f',
       })
       .setOrigin(0, 0);
 
@@ -4550,8 +4621,8 @@ export class TombScene extends Phaser.Scene {
       .text(-440, -174, '', {
         fontFamily: SERIF_FONT,
         fontSize: '17px',
-        color: '#d1c8b3',
-        wordWrap: { width: 880 },
+        color: '#3d2a1d',
+        wordWrap: { width: 430 },
         lineSpacing: 3,
       })
       .setOrigin(0, 0);
@@ -4559,8 +4630,8 @@ export class TombScene extends Phaser.Scene {
       .text(-440, -112, '', {
         fontFamily: SERIF_FONT,
         fontSize: '15px',
-        color: '#9d9481',
-        wordWrap: { width: 880 },
+        color: '#5b422d',
+        wordWrap: { width: 430 },
         lineSpacing: 3,
       })
       .setOrigin(0, 0);
@@ -4570,7 +4641,7 @@ export class TombScene extends Phaser.Scene {
         fontFamily: SANS_FONT,
         fontSize: '14px',
         fontStyle: 'bold',
-        color: '#998e74',
+        color: '#76572f',
         letterSpacing: 1,
       })
       .setOrigin(0, 0);
@@ -4579,8 +4650,8 @@ export class TombScene extends Phaser.Scene {
       .text(-440, -18, '', {
         fontFamily: SERIF_FONT,
         fontSize: '15px',
-        color: '#c8bea6',
-        wordWrap: { width: 880 },
+        color: '#3d2a1d',
+        wordWrap: { width: 430 },
         lineSpacing: 3,
       })
       .setOrigin(0, 0);
@@ -4588,8 +4659,8 @@ export class TombScene extends Phaser.Scene {
       .text(-440, 48, '', {
         fontFamily: SERIF_FONT,
         fontSize: '14px',
-        color: '#928a79',
-        wordWrap: { width: 880 },
+        color: '#5b422d',
+        wordWrap: { width: 430 },
         lineSpacing: 3,
       })
       .setOrigin(0, 0);
@@ -4599,7 +4670,7 @@ export class TombScene extends Phaser.Scene {
         fontFamily: SANS_FONT,
         fontSize: '17px',
         fontStyle: 'bold',
-        color: '#ded4b7',
+        color: '#6c351f',
       })
       .setOrigin(0, 0);
 
@@ -4607,16 +4678,16 @@ export class TombScene extends Phaser.Scene {
       .text(-440, 176, '', {
         fontFamily: SANS_FONT,
         fontSize: '15px',
-        color: '#a9a089',
-        wordWrap: { width: 880 },
+        color: '#4d3828',
+        wordWrap: { width: 430 },
       })
       .setOrigin(0, 0);
     this.panelSwapChineseDescription = this.add
       .text(-440, 208, '', {
         fontFamily: SANS_FONT,
         fontSize: '13px',
-        color: '#877f70',
-        wordWrap: { width: 880 },
+        color: '#5b422d',
+        wordWrap: { width: 430 },
       })
       .setOrigin(0, 0);
 
@@ -4624,7 +4695,7 @@ export class TombScene extends Phaser.Scene {
       .text(440, 252, 'TAB  BACKPACK / 背包     ESC  CLOSE / 关闭', {
         fontFamily: SANS_FONT,
         fontSize: '15px',
-        color: '#8f846e',
+        color: '#684a2f',
       })
       .setOrigin(1, 0.5);
     this.investigationCloseHint = closeHint;
@@ -4632,6 +4703,7 @@ export class TombScene extends Phaser.Scene {
     this.investigationPanel = this.add
       .container(width / 2, height - panelHeight / 2 - 18, [
         background,
+        this.panelArtifactImage,
         this.panelEnglishName,
         this.panelChineseName,
         this.panelDescription,
@@ -4692,10 +4764,15 @@ export class TombScene extends Phaser.Scene {
     this.panelChineseName.setText(investigableObject.chineseName);
     this.panelDescription.setText(investigableObject.description);
     this.panelChineseDescription.setText(investigableObject.chineseDescription);
+    const visual = getArtifactVisual(investigableObject.id);
+    this.panelArtifactImage
+      ?.setVisible(Boolean(visual))
+      .setTexture(visual?.inspectionTexture ?? ARTIFACT_VISUALS['burial-vessel'].inspectionTexture);
     this.updateAppraisalPanel(investigableObject);
     this.updatePanelCarryAction(investigableObject);
     this.layoutInvestigationPanel();
     this.investigationPanel.setVisible(true);
+    this.setHudDimmed(true);
     this.instructionText?.setVisible(false);
     this.escapeHintText?.setVisible(false);
   }
@@ -4839,6 +4916,8 @@ export class TombScene extends Phaser.Scene {
     this.activeInvestigation = undefined;
     this.player.setMovementEnabled(true);
     this.investigationPanel.setVisible(false);
+    this.panelArtifactImage?.setVisible(false);
+    this.setHudDimmed(false);
     this.instructionText?.setVisible(true);
     this.escapeHintText?.setVisible(true);
     this.updateNearestInteraction();
@@ -4906,6 +4985,7 @@ export class TombScene extends Phaser.Scene {
         return;
       }
       this.currentTombMap = destination;
+      this.player.setEnvironmentGrade(destination === 'cellar' ? 'cellar' : 'tomb');
       if (destination === 'cellar') {
         this.mainMapVeilWasVisible = Boolean(this.tombMapVeil?.visible);
         this.tombMapVeil?.setVisible(false);
@@ -4971,10 +5051,11 @@ export class TombScene extends Phaser.Scene {
     this.updateInteractionPrompt();
     this.cellarDiscoveryAction?.setText(
       this.carrySystem.isFull()
-        ? 'TAB  MANAGE BACKPACK — RESTORE AN OPTIONAL RELIC / 背包满了。按 TAB 整理背包，先放回一件非核心器物'
+        ? 'TAB  MANAGE BACKPACK / 背包已满，先归还一件非核心器物'
         : 'E  STORE IN BACKPACK  /  收入背包',
     );
     this.cellarDiscoveryPanel.setVisible(true).setAlpha(0).setScale(0.96);
+    this.setHudDimmed(true);
     this.tweens.add({
       targets: this.cellarDiscoveryPanel,
       alpha: 1,
@@ -4989,6 +5070,7 @@ export class TombScene extends Phaser.Scene {
   private closeCellarDiscovery(): void {
     this.cellarDiscoveryActive = false;
     this.cellarDiscoveryPanel?.setVisible(false);
+    this.setHudDimmed(false);
     this.player?.setMovementEnabled(true);
     this.updateNearestInteraction();
   }
@@ -5001,7 +5083,7 @@ export class TombScene extends Phaser.Scene {
     }
     if (this.carrySystem.isFull() || !this.carrySystem.takeArtifact(atlas)) {
       this.cellarDiscoveryAction?.setText(
-        'TAB  MANAGE BACKPACK / 背包满了。按 TAB 选择并归还一件其他器物',
+        'TAB  MANAGE BACKPACK / 背包已满，先归还一件其他器物',
       );
       this.cameras.main.shake(120, 0.0015);
       return;

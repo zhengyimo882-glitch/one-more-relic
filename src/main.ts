@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import './style.css';
 import { BootScene } from './scenes/BootScene';
 import { MainMenuScene } from './scenes/MainMenuScene';
+import { LanguageSelectScene } from './scenes/LanguageSelectScene';
 import { StoryIntroScene } from './scenes/StoryIntroScene';
 import { ShopIntroductionScene } from './scenes/ShopIntroductionScene';
 import { TombScene } from './scenes/TombScene';
@@ -9,6 +10,7 @@ import { AntiqueShopScene } from './scenes/AntiqueShopScene';
 import { Tomb25DPrototypeScene } from './scenes/Tomb25DPrototypeScene';
 import { PauseMenuScene } from './scenes/PauseMenuScene';
 import { ShopGrowthScene } from './scenes/ShopGrowthScene';
+import { installGameLanguageFilter } from './i18n/gameLanguage';
 
 const requestedScene = new URLSearchParams(window.location.search).get('scene');
 const launchTomb25DPrototype = requestedScene === 'tomb25d';
@@ -20,6 +22,7 @@ const launchShopGrowth = requestedScene === 'shopgrowth';
 const regularScenes = [
   BootScene,
   MainMenuScene,
+  LanguageSelectScene,
   StoryIntroScene,
   ShopIntroductionScene,
   TombScene,
@@ -81,6 +84,7 @@ const config: Phaser.Types.Core.GameConfig = {
 };
 
 export const game = new Phaser.Game(config);
+installGameLanguageFilter(game);
 
 if (import.meta.env.DEV) {
   (window as Window & { __GAME__?: Phaser.Game }).__GAME__ = game;

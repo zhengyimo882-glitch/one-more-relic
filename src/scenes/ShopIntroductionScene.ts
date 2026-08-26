@@ -21,16 +21,13 @@ import {
 } from '../visuals/createProceduralAtmosphere';
 import { VISUAL_THEME } from '../visuals/visualTheme';
 import {
-  getPlayerAvatarTint,
-  PLAYER_PORTRAIT_FRAME,
-  PLAYER_TEXTURE_KEY,
+  PLAYER_PORTRAIT_TEXTURE_KEY,
   preloadPlayerAvatarAssets,
 } from '../visuals/createPlayerAvatarVisual';
 import {
   inferShopkeeperGesture,
   preloadShopkeeperAssets,
-  SHOPKEEPER_TEXTURE_KEY,
-  shopkeeperFrameForGesture,
+  SHOPKEEPER_PORTRAIT_TEXTURE_KEY,
   type ShopkeeperGesture,
 } from '../visuals/createShopkeeperVisual';
 import {
@@ -292,8 +289,8 @@ export class ShopIntroductionScene extends Phaser.Scene {
   private dialogueProgress?: Phaser.GameObjects.Text;
   private dialogueAccent?: Phaser.GameObjects.Rectangle;
   private dialoguePortrait?: Phaser.GameObjects.Graphics;
-  private dialogueShopkeeperPortrait?: Phaser.GameObjects.Sprite;
-  private dialoguePlayerPortrait?: Phaser.GameObjects.Sprite;
+  private dialogueShopkeeperPortrait?: Phaser.GameObjects.Image;
+  private dialoguePlayerPortrait?: Phaser.GameObjects.Image;
   private dialogueFocusOverlay?: Phaser.GameObjects.Graphics;
   private dialogueSpeakerFocus?: Phaser.GameObjects.Graphics;
   private dialogueReveal?: BilingualTextReveal;
@@ -539,20 +536,17 @@ export class ShopIntroductionScene extends Phaser.Scene {
     const background = createParchmentPanel(this, 1120, 250);
     const innerBorder = this.add.rectangle(0, 0, 1094, 224, 0x000000, 0)
       .setStrokeStyle(1, 0x5c3b22, 0.5);
-    const portraitFrame = this.add.rectangle(-472, 0, 142, 154, 0x211b16, 0.96)
+    const portraitFrame = this.add.rectangle(-472, 0, 158, 166, 0x211b16, 0.96)
       .setStrokeStyle(1, 0x806b4d, 0.72);
     this.dialogueAccent = this.add.rectangle(-557, 0, 6, 250, 0x7b4226, 1);
     this.dialoguePortrait = this.add.graphics();
     this.dialogueShopkeeperPortrait = this.add
-      .sprite(-472, 20, SHOPKEEPER_TEXTURE_KEY, 0)
-      .setOrigin(0.5, 0.78)
-      .setScale(0.5)
+      .image(-472, 0, SHOPKEEPER_PORTRAIT_TEXTURE_KEY)
+      .setDisplaySize(152, 152)
       .setVisible(false);
     this.dialoguePlayerPortrait = this.add
-      .sprite(-472, 10, PLAYER_TEXTURE_KEY, PLAYER_PORTRAIT_FRAME)
-      .setOrigin(0.5)
-      .setScale(0.62)
-      .setTint(getPlayerAvatarTint(this.appearanceId))
+      .image(-472, 0, PLAYER_PORTRAIT_TEXTURE_KEY)
+      .setDisplaySize(152, 152)
       .setVisible(false);
     this.dialogueContext = this.add.text(-382, -103, 'FIRST COMMISSION / 第一次委托', {
       fontFamily: SANS_FONT,
@@ -862,13 +856,9 @@ export class ShopIntroductionScene extends Phaser.Scene {
     shopkeeperPortrait?.setVisible(shopkeeper);
     playerPortrait?.setVisible(player);
     if (shopkeeper) {
-      shopkeeperPortrait?.setFrame(
-        shopkeeperFrameForGesture(beat.shopkeeperGesture ?? 'nod'),
-      );
       return;
     }
     if (player) {
-      playerPortrait?.setFrame(PLAYER_PORTRAIT_FRAME);
       return;
     }
 

@@ -16,6 +16,7 @@ import {
   polishSceneTypography,
   setTypographyRole,
 } from '../ui/gameTypography';
+import { localize } from '../i18n/gameLanguage';
 
 const SERIF_FONT =
   'Georgia, "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif';
@@ -164,7 +165,10 @@ export class StoryIntroScene extends Phaser.Scene {
       .text(
         640,
         678,
-        'E / ENTER / 鼠标点击  继续     S  跳过介绍',
+        localize(
+          'E / ENTER / MOUSE CLICK  CONTINUE     S  SKIP INTRO',
+          'E / ENTER / 鼠标点击  继续     S  跳过介绍',
+        ),
         {
           fontFamily: SANS_FONT,
           fontSize: '15px',
@@ -173,7 +177,7 @@ export class StoryIntroScene extends Phaser.Scene {
       )
       .setOrigin(0.5);
     this.add
-      .text(28, 678, 'ESC  PAUSE / 暂停', {
+      .text(28, 678, localize('ESC  PAUSE', 'ESC  暂停'), {
         fontFamily: SANS_FONT,
         fontSize: '14px',
         color: '#979f93',

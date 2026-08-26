@@ -10,6 +10,7 @@ import {
 } from '../visuals/createPlayerAvatarVisual';
 import { TOMB_FEEL } from '../config/tombFeelConfig';
 import { InputActionManager } from '../input/InputActionManager';
+import type { ArtSceneGrade } from '../config/artTokens';
 
 export type PlayerDirection =
   | 'north'
@@ -79,8 +80,8 @@ export class Player extends Phaser.GameObjects.Container {
 
     scene.physics.add.existing(this);
     const physicsBody = this.body as Phaser.Physics.Arcade.Body;
-    physicsBody.setSize(24, 22);
-    physicsBody.setOffset(12, 22);
+    physicsBody.setSize(22, 14);
+    physicsBody.setOffset(13, 34);
     physicsBody.setCollideWorldBounds(true);
 
     scene.game.events.on(Phaser.Core.Events.BLUR, this.stop, this);
@@ -222,6 +223,7 @@ export class Player extends Phaser.GameObjects.Container {
   setCarrying(carrying: boolean): void { this.avatarVisual.setCarrying(carrying); }
   playCarryAction(action: 'pickup' | 'place'): void { this.avatarVisual.playAction(action); }
   playCandleLightingAction(): void { this.avatarVisual.playAction('light-candle'); }
+  setEnvironmentGrade(grade: ArtSceneGrade): void { this.avatarVisual.setEnvironmentGrade(grade); }
 
   getFlashlightMountWorld(angleRadians: number): Phaser.Math.Vector2 {
     const forward = TOMB_FEEL.player.flashlightForwardOffset;

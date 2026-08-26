@@ -3,12 +3,12 @@ import Phaser from 'phaser';
 const PARCHMENT_TEXTURE_KEY = 'generated-dialogue-parchment';
 const PARCHMENT_VISIBLE_FRAME = 'visible-paper';
 const PARCHMENT_TEXTURE_PATH =
-  'assets/generated/shop_dialogue_v1/parchment_panel_9slice.png';
+  'assets/art-v2/ui/old-paper-panel-v2.png';
 const PARCHMENT_VISIBLE_BOUNDS = {
-  x: 42,
-  y: 45,
-  width: 947,
-  height: 425,
+  x: 0,
+  y: 0,
+  width: 512,
+  height: 512,
 } as const;
 
 export function preloadParchmentPanel(scene: Phaser.Scene): void {
@@ -34,7 +34,7 @@ export function createParchmentPanel(
       PARCHMENT_VISIBLE_BOUNDS.height,
     );
   }
-  const horizontalSlice = Math.min(150, Math.floor(width * 0.18));
+  const horizontalSlice = Math.min(72, Math.floor(width * 0.18));
   const verticalSlice = Math.min(72, Math.max(42, Math.floor(height * 0.3)));
   const panel = scene.add.nineslice(
     0,

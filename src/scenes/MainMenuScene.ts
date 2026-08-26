@@ -330,9 +330,9 @@ export class MainMenuScene extends Phaser.Scene {
         duration: 70,
         yoyo: true,
         onComplete: () => this.transitionController?.start(
-          'StoryIntroScene',
+          'LanguageSelectScene',
           undefined,
-          { durationMs: 200, label: '拓片显影 · 故事开始' },
+          { durationMs: 200, label: '选择语言 · Choose language' },
         ),
       });
     };

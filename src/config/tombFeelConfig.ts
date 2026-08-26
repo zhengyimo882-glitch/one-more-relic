@@ -139,7 +139,7 @@ export const TOMB_FEEL: TombFeelConfig = {
     safetyRevealRadius: 74,
   },
   player: {
-    spriteScale: 0.43,
+    spriteScale: 0.86,
     animationFrameRate: 6.5,
     movementAnimationSpeedMultiplier: 1,
     flashlightMountOffsetX: 0,

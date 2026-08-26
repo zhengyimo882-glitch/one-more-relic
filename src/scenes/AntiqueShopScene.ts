@@ -55,6 +55,7 @@ import {
   revealPanel,
   setTypographyRole,
 } from '../ui/gameTypography';
+import { createArtPanel, preloadArtPanels } from '../ui/artPanel';
 
 const SERIF_FONT = VISUAL_THEME.fonts.serif;
 const SANS_FONT = VISUAL_THEME.fonts.sans;
@@ -283,6 +284,7 @@ export class AntiqueShopScene extends Phaser.Scene {
     installSceneLoadingOverlay(this);
     preloadClickMoveVisuals(this);
     preloadPlayerAvatarAssets(this);
+    preloadArtPanels(this);
     preloadShopkeeperAssets(this);
     preloadParchmentPanel(this);
     preloadAntiqueShopInteriorAssets(this);
@@ -793,6 +795,7 @@ export class AntiqueShopScene extends Phaser.Scene {
       0x0d0f0c,
       0.988,
     );
+    const resultFrame = createArtPanel(this, 1060, 666, 'dark', 0.98);
     const title = this.add
       .text(0, -290, 'THE FIRST RETURN', {
         fontFamily: SERIF_FONT,
@@ -906,6 +909,7 @@ export class AntiqueShopScene extends Phaser.Scene {
     this.resultPanel = this.add
       .container(640, 360, [
         background,
+        resultFrame,
         title,
         chineseTitle,
         this.resultStatusEnglish,

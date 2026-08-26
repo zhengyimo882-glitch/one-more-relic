@@ -2,11 +2,16 @@ import Phaser from 'phaser';
 import { TOMB_FEEL } from '../config/tombFeelConfig';
 import type { PlayerAppearanceDefinition } from '../data/playerAppearances';
 import type { PlayerDirection, PlayerLocomotion } from '../objects/Player';
+import { ART_TOKENS, tintForScene, type ArtSceneGrade } from '../config/artTokens';
 
 export const PLAYER_TEXTURE_KEY = 'generated-tomb-explorer';
 export const PLAYER_PORTRAIT_FRAME = 0;
-const PLAYER_TEXTURE_PATH = 'assets/generated/tomb_vertical_slice/player_explorer_sheet.png';
-const PLAYER_FRAME_SIZE = 256;
+export const PLAYER_PORTRAIT_TEXTURE_KEY = 'art-v2-protagonist-portrait';
+const PLAYER_TEXTURE_PATH = 'assets/art-v2/characters/protagonist-v2-sheet.png';
+const PLAYER_PORTRAIT_TEXTURE_PATH = 'assets/art-v2/portraits/protagonist-v3-dialogue-portrait.png';
+const PLAYER_SHADOW_KEY = 'art-v2-character-ground-shadow';
+const PLAYER_SHADOW_PATH = 'assets/art-v2/effects/character-ground-shadow-v2.png';
+const PLAYER_FRAME_SIZE = 128;
 const SHEET_COLUMNS = 4;
 
 type PlayerAction = 'pickup' | 'place' | 'light-candle';
@@ -57,6 +62,7 @@ export interface PlayerAvatarVisual {
   ): void;
   setCarrying(carrying: boolean): void;
   playAction(action: PlayerAction): void;
+  setEnvironmentGrade(grade: ArtSceneGrade): void;
   getAnimationState(): PlayerVisualState;
 }
 
@@ -66,6 +72,12 @@ export function preloadPlayerAvatarAssets(scene: Phaser.Scene): void {
     frameWidth: PLAYER_FRAME_SIZE,
     frameHeight: PLAYER_FRAME_SIZE,
   });
+  if (!scene.textures.exists(PLAYER_SHADOW_KEY)) {
+    scene.load.image(PLAYER_SHADOW_KEY, PLAYER_SHADOW_PATH);
+  }
+  if (!scene.textures.exists(PLAYER_PORTRAIT_TEXTURE_KEY)) {
+    scene.load.image(PLAYER_PORTRAIT_TEXTURE_KEY, PLAYER_PORTRAIT_TEXTURE_PATH);
+  }
 }
 
 export function getPlayerAvatarTint(
@@ -79,14 +91,20 @@ export function createPlayerAvatarVisual(
   appearance: PlayerAppearanceDefinition,
 ): PlayerAvatarVisual {
   registerPlayerAnimations(scene);
-  scene.textures.get(PLAYER_TEXTURE_KEY).setFilter(Phaser.Textures.FilterMode.LINEAR);
+  scene.textures.get(PLAYER_TEXTURE_KEY).setFilter(Phaser.Textures.FilterMode.NEAREST);
 
+  const shadow = scene.add
+    .image(0, 2, PLAYER_SHADOW_KEY)
+    .setOrigin(0.5)
+    .setAlpha(ART_TOKENS.lighting.shadowAlpha);
   const sprite = scene.add
     .sprite(0, 0, PLAYER_TEXTURE_KEY, frameFor('north', false, false))
-    .setOrigin(0.5, 0.66)
+    .setOrigin(0.5, ART_TOKENS.character.footAnchorY / PLAYER_FRAME_SIZE)
     .setScale(TOMB_FEEL.player.spriteScale)
     .setTint(APPEARANCE_TINTS[appearance.id]);
-  const container = scene.add.container(0, 0, [sprite]);
+  const container = scene.add.container(0, 0, [shadow, sprite]);
+  const initialGrade: ArtSceneGrade = scene.scene.key.includes('Shop') ? 'shop' : 'tomb';
+  sprite.setTint(tintForScene(initialGrade));
 
   let facing: PlayerDirection = 'north';
   let moving = false;
@@ -188,6 +206,11 @@ export function createPlayerAvatarVisual(
           applyState();
         },
       });
+    },
+    setEnvironmentGrade(grade: ArtSceneGrade): void {
+      sprite.setTint(tintForScene(grade));
+      shadow.setTint(ART_TOKENS.lighting.shadowColor);
+      shadow.setAlpha(grade === 'cellar' ? 0.58 : ART_TOKENS.lighting.shadowAlpha);
     },
     getAnimationState(): PlayerVisualState {
       if (!moving) return carrying ? 'carry-idle' : 'idle';
