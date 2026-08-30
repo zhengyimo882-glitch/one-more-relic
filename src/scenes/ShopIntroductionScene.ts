@@ -64,6 +64,7 @@ const SANS_FONT = VISUAL_THEME.fonts.sans;
 
 interface ShopIntroductionSceneData {
   appearanceId?: PlayerAppearanceId;
+  operatorStartAtDialogue?: boolean;
 }
 
 type ShopIntroductionPhase =
@@ -262,6 +263,7 @@ function you(textEn: string, textZh: string): DialogueBeat {
 
 export class ShopIntroductionScene extends Phaser.Scene {
   private appearanceId: PlayerAppearanceId = DEFAULT_PLAYER_APPEARANCE_ID;
+  private operatorStartAtDialogue = false;
   private phase: ShopIntroductionPhase = 'arriving';
   private player?: Player;
   private interior?: AntiqueShopInterior;
@@ -322,6 +324,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
     this.appearanceId = isPlayerAppearanceId(data.appearanceId)
       ? data.appearanceId
       : DEFAULT_PLAYER_APPEARANCE_ID;
+    this.operatorStartAtDialogue = Boolean(data.operatorStartAtDialogue);
   }
 
   create(): void {
@@ -368,6 +371,12 @@ export class ShopIntroductionScene extends Phaser.Scene {
     polishSceneTypography(this);
     this.createInput();
     this.startArrival();
+    if (this.operatorStartAtDialogue) {
+      this.arrivalTimer?.remove(false);
+      this.phase = 'free-roam';
+      this.player.setMovementEnabled(true);
+      this.beginFirstConversation();
+    }
     markSceneInteractive(this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.handleShutdown, this);
   }

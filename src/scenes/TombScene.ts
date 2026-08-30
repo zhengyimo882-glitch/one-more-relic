@@ -247,6 +247,7 @@ type RoomRevealVeil = {
 
 interface TombSceneData {
   appearanceId?: PlayerAppearanceId;
+  operatorSkipArrival?: boolean;
 }
 
 type PortableArtifactId =
@@ -420,6 +421,7 @@ const DEPARTURE_RESULTS: Record<DepartureChoice, DepartureResult> = {
 
 export class TombScene extends Phaser.Scene {
   private incomingAppearanceId: PlayerAppearanceId = DEFAULT_PLAYER_APPEARANCE_ID;
+  private operatorSkipArrival = false;
   private appearanceId: PlayerAppearanceId = DEFAULT_PLAYER_APPEARANCE_ID;
   private player?: Player;
   private investigableObjects: InvestigableObject[] = [];
@@ -712,6 +714,7 @@ export class TombScene extends Phaser.Scene {
     this.incomingAppearanceId = isPlayerAppearanceId(data?.appearanceId)
       ? data.appearanceId
       : DEFAULT_PLAYER_APPEARANCE_ID;
+    this.operatorSkipArrival = Boolean(data?.operatorSkipArrival);
   }
 
   private registerTombTextures(): void {
@@ -886,6 +889,9 @@ export class TombScene extends Phaser.Scene {
       dragging: () => this.cellarTransitionActive ? 'map-transition' : '',
     });
     this.startArrivalIntroduction();
+    if (this.operatorSkipArrival) {
+      this.skipCurrentDialogue();
+    }
     polishSceneTypography(this);
     markSceneInteractive(this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanupTombScene, this);

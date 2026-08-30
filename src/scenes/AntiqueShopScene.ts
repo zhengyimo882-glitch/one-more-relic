@@ -67,6 +67,7 @@ export interface AntiqueShopSceneData {
   departureChoice: DepartureChoice;
   settlement?: TombSettlement;
   appearanceId?: PlayerAppearanceId;
+  operatorStartAtDialogue?: boolean;
 }
 
 type AntiqueShopPhase =
@@ -216,6 +217,7 @@ export class AntiqueShopScene extends Phaser.Scene {
   private incomingSettlement?: TombSettlement;
   private incomingAppearanceId: PlayerAppearanceId =
     DEFAULT_PLAYER_APPEARANCE_ID;
+  private operatorStartAtDialogue = false;
   private departureChoice: DepartureChoice = 'empty';
   private appearanceId: PlayerAppearanceId = DEFAULT_PLAYER_APPEARANCE_ID;
   private phase: AntiqueShopPhase = 'arriving';
@@ -302,6 +304,7 @@ export class AntiqueShopScene extends Phaser.Scene {
     this.incomingAppearanceId = isPlayerAppearanceId(data?.appearanceId)
       ? data.appearanceId
       : DEFAULT_PLAYER_APPEARANCE_ID;
+    this.operatorStartAtDialogue = Boolean(data?.operatorStartAtDialogue);
   }
 
   create(): void {
@@ -355,6 +358,11 @@ export class AntiqueShopScene extends Phaser.Scene {
     polishSceneTypography(this);
     this.registerInput();
     this.showArrivalLocation();
+    if (this.operatorStartAtDialogue) {
+      this.arrivalTimer?.remove(false);
+      this.phase = 'free-roam';
+      this.beginShopkeeperConversation();
+    }
     markSceneInteractive(this);
     this.events.once(
       Phaser.Scenes.Events.SHUTDOWN,
