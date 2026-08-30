@@ -125,9 +125,9 @@ export class InvestigableObject {
     return Phaser.Math.Distance.Between(this.worldX, this.worldY, x, y);
   }
 
-  setNearby(isNearby: boolean): void {
+  setNearby(isNearby: boolean, showPrompt = true): void {
     const isInWorld = this.isAvailable && this.locationState === 'world';
-    this.promptObject.setVisible(isInWorld && isNearby && !this.isBeingInvestigated);
+    this.promptObject.setVisible(showPrompt && isInWorld && isNearby && !this.isBeingInvestigated);
     this.highlightObject
       .setVisible(isInWorld && (isNearby || this.isBeingInvestigated || this.taskHighlightEnabled))
       .setAlpha(isNearby || this.isBeingInvestigated ? 1 : this.taskHighlightAlpha);

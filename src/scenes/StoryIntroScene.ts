@@ -17,12 +17,11 @@ import {
   setTypographyRole,
 } from '../ui/gameTypography';
 import { localize } from '../i18n/gameLanguage';
+import { ActionHintPanel } from '../ui/ActionHintPanel';
+import { createSettingsButton } from '../ui/SettingsButton';
 
 const SERIF_FONT =
   'Georgia, "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif';
-const SANS_FONT =
-  'Arial, "Noto Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif';
-
 type StoryAct = {
   english: string;
   chinese: string;
@@ -60,6 +59,7 @@ export class StoryIntroScene extends Phaser.Scene {
   private inputActions?: InputActionManager;
   private transitionController?: SceneTransitionController;
   private textReveal?: BilingualTextReveal;
+  private actionHints?: ActionHintPanel;
 
   constructor() {
     super('StoryIntroScene');
@@ -78,6 +78,13 @@ export class StoryIntroScene extends Phaser.Scene {
     this.transitionController = new SceneTransitionController(this, this.inputActions);
     this.cameras.main.setBackgroundColor('#181b17');
     this.createStoryDisplay();
+    this.actionHints = new ActionHintPanel(this);
+    this.actionHints.setActions([
+      { key: 'E', label: localize('Continue', '继续'), primary: true },
+      { key: 'S', label: localize('Skip intro', '跳过介绍') },
+      { key: 'ESC', label: localize('Pause', '暂停') },
+    ]);
+    createSettingsButton(this, () => openPauseMenu(this));
     polishSceneTypography(this);
     this.registerInput();
     this.showAct(this.actIndex);
@@ -107,6 +114,16 @@ export class StoryIntroScene extends Phaser.Scene {
     if (escapePressed) {
       openPauseMenu(this);
     }
+  }
+
+  public isCurrentDialogueSkippable(): boolean {
+    return !this.transitioning && this.actIndex < STORY_ACTS.length;
+  }
+
+  public skipCurrentDialogue(): boolean {
+    if (!this.isCurrentDialogueSkippable()) return false;
+    this.enterAntiqueShop();
+    return true;
   }
 
   private createStoryDisplay(): void {
@@ -161,29 +178,6 @@ export class StoryIntroScene extends Phaser.Scene {
       this.englishText,
       this.chineseText,
     ]);
-    this.add
-      .text(
-        640,
-        678,
-        localize(
-          'E / ENTER / MOUSE CLICK  CONTINUE     S  SKIP INTRO',
-          'E / ENTER / 鼠标点击  继续     S  跳过介绍',
-        ),
-        {
-          fontFamily: SANS_FONT,
-          fontSize: '15px',
-          color: '#b0a38b',
-        },
-      )
-      .setOrigin(0.5);
-    this.add
-      .text(28, 678, localize('ESC  PAUSE', 'ESC  暂停'), {
-        fontFamily: SANS_FONT,
-        fontSize: '14px',
-        color: '#979f93',
-      })
-      .setOrigin(0, 0.5);
-
     this.add
       .zone(640, 360, 1280, 720)
       .setInteractive({ useHandCursor: true })

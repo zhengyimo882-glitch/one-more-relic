@@ -185,6 +185,7 @@ export class Player extends Phaser.GameObjects.Container {
       locomotion,
       Phaser.Math.Clamp(visualSpeed / TOMB_FEEL.movement.speed, 0.35, 1),
     );
+    this.snapAvatarToWorldPixel();
   }
 
   setMovementEnabled(enabled: boolean): void {
@@ -262,5 +263,13 @@ export class Player extends Phaser.GameObjects.Container {
     this.smoothedVelocity.set(0, 0);
     this.lastUpdateTime = this.scene.time.now;
     this.avatarVisual.setMovement(false, this.scene.time.now, 'forward', 0);
+    this.snapAvatarToWorldPixel();
+  }
+
+  private snapAvatarToWorldPixel(): void {
+    this.avatarVisual.container.setPosition(
+      Math.round(this.x) - this.x,
+      Math.round(this.y) - this.y,
+    );
   }
 }

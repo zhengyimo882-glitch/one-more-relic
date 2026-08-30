@@ -10,6 +10,8 @@ import {
 import { InputActionManager } from '../input/InputActionManager';
 import { SceneTransitionController } from '../systems/SceneTransitionController';
 import { polishSceneTypography } from '../ui/gameTypography';
+import { ActionHintPanel } from '../ui/ActionHintPanel';
+import { getCurrentDialogueController } from '../ui/SettingsButton';
 
 const SERIF_FONT =
   'Georgia, "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif';
@@ -20,7 +22,7 @@ type PauseMenuData = {
   sourceSceneKey: string;
 };
 
-type PauseAction = 'resume' | 'main-menu';
+type PauseAction = 'skip-dialogue' | 'resume' | 'main-menu';
 
 export function openPauseMenu(scene: Phaser.Scene): void {
   if (scene.scene.isActive('PauseMenuScene') || scene.scene.isPaused()) {
@@ -60,6 +62,7 @@ export class PauseMenuScene extends Phaser.Scene {
   private buttonLabels: Phaser.GameObjects.Text[] = [];
   private buttonKinds: StyleBoardButtonKind[] = [];
   private buttonSizes: Array<{ width: number; height: number }> = [];
+  private menuActions: PauseAction[] = [];
   private confirmPanel?: Phaser.GameObjects.Container;
   private inputActions?: InputActionManager;
   private transitionController?: SceneTransitionController;
@@ -84,6 +87,11 @@ export class PauseMenuScene extends Phaser.Scene {
     this.buttonLabels = [];
     this.buttonKinds = [];
     this.buttonSizes = [];
+    const sourceScene = this.scene.get(this.sourceSceneKey);
+    const dialogueController = getCurrentDialogueController(sourceScene);
+    this.menuActions = dialogueController?.isCurrentDialogueSkippable()
+      ? ['skip-dialogue', 'resume', 'main-menu']
+      : ['resume', 'main-menu'];
     this.inputReadyAt = this.time.now + 160;
     this.inputActions = InputActionManager.forScene(this);
     this.inputActions.setContext('pause-menu');
@@ -96,9 +104,10 @@ export class PauseMenuScene extends Phaser.Scene {
 
     const { width, height } = this.scale;
     this.add.rectangle(0, 0, width, height, UI_STYLE_BOARD.colors.backdrop, 0.84).setOrigin(0);
-    createStyleBoardPanel(this, 500, 430, 'carved', 0.985).setPosition(width / 2, height / 2);
+    createStyleBoardPanel(this, 500, this.menuActions.length === 3 ? 500 : 430, 'carved', 0.985)
+      .setPosition(width / 2, height / 2);
     this.add
-      .text(width / 2, 188, '暂停', {
+      .text(width / 2, this.menuActions.length === 3 ? 150 : 188, '设置', {
         fontFamily: SERIF_FONT,
         fontSize: '38px',
         fontStyle: 'bold',
@@ -107,22 +116,29 @@ export class PauseMenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
     this.add
-      .text(width / 2, 231, '游戏已暂停', {
+      .text(width / 2, this.menuActions.length === 3 ? 198 : 231, '游戏已暂停', {
         fontFamily: SERIF_FONT,
         fontSize: '21px',
         color: UI_STYLE_BOARD.colors.muted,
       })
       .setOrigin(0.5);
 
-    this.createButton(0, width / 2, 316, '', '继续游戏', 'resume');
-    this.createButton(1, width / 2, 398, '', '返回主菜单', 'main-menu');
-    this.add
-      .text(width / 2, 510, 'ESC 继续   ·   ↑ ↓ / 摇杆 选择   ·   ENTER / A 确认', {
-        fontFamily: SANS_FONT,
-        fontSize: '13px',
-        color: UI_STYLE_BOARD.colors.muted,
-      })
-      .setOrigin(0.5);
+    const startY = this.menuActions.length === 3 ? 280 : 316;
+    const gap = this.menuActions.length === 3 ? 76 : 82;
+    this.menuActions.forEach((action, index) => {
+      const label = action === 'skip-dialogue'
+        ? '跳至下一操作'
+        : action === 'resume'
+          ? '继续游戏'
+          : '返回开始界面';
+      this.createButton(index, width / 2, startY + index * gap, '', label, action);
+    });
+    const actionHints = new ActionHintPanel(this, 100);
+    actionHints.setActions([
+      { key: '↑/↓', label: '选择', primary: true },
+      { key: 'E', label: '确认' },
+      { key: 'ESC', label: '继续游戏' },
+    ]);
 
     this.createConfirmationPanel();
     this.registerInput();
@@ -169,7 +185,13 @@ export class PauseMenuScene extends Phaser.Scene {
     }
 
     if (previousPressed || nextPressed) {
-      this.selectedIndex = this.selectedIndex === 0 ? 1 : 0;
+      const direction = previousPressed ? -1 : 1;
+      const optionCount = this.confirmingReturn ? 2 : this.menuActions.length;
+      this.selectedIndex = Phaser.Math.Wrap(
+        this.selectedIndex + direction,
+        0,
+        optionCount,
+      );
       this.updateSelection();
       this.inputReadyAt = this.time.now + 140;
       return;
@@ -182,10 +204,8 @@ export class PauseMenuScene extends Phaser.Scene {
         } else {
           this.returnToMainMenu();
         }
-      } else if (this.selectedIndex === 0) {
-        this.resumeGame();
       } else {
-        this.openConfirmation();
+        this.performMenuAction(this.menuActions[this.selectedIndex]);
       }
       this.inputReadyAt = this.time.now + 160;
     }
@@ -231,11 +251,7 @@ export class PauseMenuScene extends Phaser.Scene {
       if (this.confirmingReturn || this.transitioning) {
         return;
       }
-      if (action === 'resume') {
-        this.resumeGame();
-      } else {
-        this.openConfirmation();
-      }
+      this.performMenuAction(action);
     });
     this.buttons.push(button);
     this.buttonBackgrounds.push(background);
@@ -338,6 +354,16 @@ export class PauseMenuScene extends Phaser.Scene {
     this.inputActions = InputActionManager.forScene(this);
   }
 
+  private performMenuAction(action: PauseAction | undefined): void {
+    if (action === 'skip-dialogue') {
+      this.skipCurrentDialogue();
+    } else if (action === 'resume') {
+      this.resumeGame();
+    } else if (action === 'main-menu') {
+      this.openConfirmation();
+    }
+  }
+
   private openConfirmation(): void {
     this.confirmingReturn = true;
     this.selectedIndex = 0;
@@ -347,15 +373,18 @@ export class PauseMenuScene extends Phaser.Scene {
 
   private closeConfirmation(): void {
     this.confirmingReturn = false;
-    this.selectedIndex = 1;
+    this.selectedIndex = Math.max(0, this.menuActions.indexOf('main-menu'));
     this.confirmPanel?.setVisible(false);
     this.updateSelection();
   }
 
   private updateSelection(): void {
-    const offset = this.confirmingReturn ? 2 : 0;
+    const menuButtonCount = this.menuActions.length;
+    const offset = this.confirmingReturn ? menuButtonCount : 0;
     this.buttons.forEach((button, index) => {
-      const inCurrentLayer = this.confirmingReturn ? index >= 2 : index < 2;
+      const inCurrentLayer = this.confirmingReturn
+        ? index >= menuButtonCount
+        : index < menuButtonCount;
       button.setVisible(inCurrentLayer);
       const selected = inCurrentLayer && index - offset === this.selectedIndex;
       const background = this.buttonBackgrounds[index];
@@ -386,6 +415,20 @@ export class PauseMenuScene extends Phaser.Scene {
       this.scene.resume(this.sourceSceneKey);
     }
     this.scene.stop();
+  }
+
+  private skipCurrentDialogue(): void {
+    if (this.transitioning) {
+      return;
+    }
+    const sourceScene = this.scene.get(this.sourceSceneKey);
+    const dialogueController = getCurrentDialogueController(sourceScene);
+    if (!dialogueController?.isCurrentDialogueSkippable()) {
+      this.resumeGame();
+      return;
+    }
+    dialogueController.skipCurrentDialogue();
+    this.resumeGame();
   }
 
   private returnToMainMenu(): void {

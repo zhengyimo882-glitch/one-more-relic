@@ -55,6 +55,9 @@ import {
   revealPanel,
   setTypographyRole,
 } from '../ui/gameTypography';
+import { ActionHintPanel } from '../ui/ActionHintPanel';
+import { createSettingsButton } from '../ui/SettingsButton';
+import { localize } from '../i18n/gameLanguage';
 
 const SERIF_FONT = VISUAL_THEME.fonts.serif;
 const SANS_FONT = VISUAL_THEME.fonts.sans;
@@ -300,6 +303,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
   private choiceCards: Phaser.GameObjects.Container[] = [];
   private tallyVisual?: Phaser.GameObjects.Container;
   private toolsVisual?: Phaser.GameObjects.Container;
+  private actionHints?: ActionHintPanel;
 
   constructor() {
     super('ShopIntroductionScene');
@@ -360,6 +364,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
       depth: 18,
     });
     this.createFixedUI();
+    createSettingsButton(this, () => openPauseMenu(this));
     polishSceneTypography(this);
     this.createInput();
     this.startArrival();
@@ -372,6 +377,7 @@ export class ShopIntroductionScene extends Phaser.Scene {
       return;
     }
     this.inputActions.setContext(`shop-intro:${this.phase}`);
+    this.updateActionHints();
     if (this.inputActions.consume('cancel') || isPauseButtonPressed(this)) {
       openPauseMenu(this);
       return;
@@ -413,6 +419,18 @@ export class ShopIntroductionScene extends Phaser.Scene {
       }
       return;
     }
+  }
+
+  public isCurrentDialogueSkippable(): boolean {
+    return this.phase === 'conversation' && this.dialogueIndex < this.dialogueBeats.length;
+  }
+
+  public skipCurrentDialogue(): boolean {
+    if (!this.isCurrentDialogueSkippable()) return false;
+    this.dialogueReveal?.complete();
+    this.dialogueIndex = this.dialogueBeats.length - 1;
+    this.advanceConversation();
+    return true;
   }
 
   private resetState(): void {
@@ -512,6 +530,38 @@ export class ShopIntroductionScene extends Phaser.Scene {
     this.createDialogueFocus();
     this.createDialoguePanel();
     this.createChoicePanel();
+    this.actionHints = new ActionHintPanel(this, 130);
+    this.updateActionHints();
+  }
+
+  private updateActionHints(): void {
+    if (!this.actionHints) return;
+    if (this.phase === 'arriving' || this.phase === 'departing') {
+      this.actionHints.setActions([]);
+      return;
+    }
+    if (this.phase === 'conversation') {
+      this.actionHints.setActions([
+        { key: 'E', label: localize('Continue', '继续'), primary: true },
+        { key: 'ESC', label: localize('Pause', '暂停') },
+      ]);
+      return;
+    }
+    if (this.phase === 'response-choice' || this.phase === 'job-confirmation') {
+      this.actionHints.setActions([
+        { key: 'A/D', label: localize('Select', '选择'), primary: true },
+        { key: 'E', label: localize('Confirm', '确认') },
+        { key: 'ESC', label: localize('Pause', '暂停') },
+      ]);
+      return;
+    }
+    this.actionHints.setActions([
+      ...(this.isPlayerNearCounter()
+        ? [{ key: 'E', label: localize('Show the tally', '出示铜牌'), primary: true }]
+        : []),
+      { key: 'WASD', label: localize('Move', '移动') },
+      { key: 'ESC', label: localize('Pause', '暂停') },
+    ]);
   }
 
   private createDialogueFocus(): void {
@@ -605,6 +655,8 @@ export class ShopIntroductionScene extends Phaser.Scene {
         color: '#ead9b9',
       })
       .setOrigin(0.5);
+    continueBacking.setVisible(false);
+    continueText.setVisible(false);
     setTypographyRole(continueText, 'hint-light');
     this.dialogueReveal = new BilingualTextReveal(
       this,
@@ -698,6 +750,8 @@ export class ShopIntroductionScene extends Phaser.Scene {
         color: '#ead9b9',
       })
       .setOrigin(0.5);
+    controlsBacking.setVisible(false);
+    controls.setVisible(false);
     setTypographyRole(controls, 'hint-light');
     this.choicePanel = this.add
       .container(this.scale.width / 2, 586, [

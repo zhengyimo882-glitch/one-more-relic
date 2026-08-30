@@ -9,6 +9,7 @@ import {
 } from '../ui/styleBoardUi';
 import { polishSceneTypography } from '../ui/gameTypography';
 import { SceneTransitionController, markSceneInteractive } from '../systems/SceneTransitionController';
+import { ActionHintPanel } from '../ui/ActionHintPanel';
 
 const SERIF_FONT = 'Georgia, "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif';
 const SANS_FONT = 'Arial, "Noto Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif';
@@ -68,11 +69,11 @@ export class LanguageSelectScene extends Phaser.Scene {
     this.createLanguageButton(width / 2 - 178, height / 2 + 34, '中文', 'zh-CN');
     this.createLanguageButton(width / 2 + 178, height / 2 + 34, 'ENGLISH', 'en');
 
-    this.add.text(width / 2, height / 2 + 154, '← / →  选择 · Select     E / ENTER  确认 · Confirm', {
-      fontFamily: SANS_FONT,
-      fontSize: '14px',
-      color: '#91856f',
-    }).setOrigin(0.5);
+    const actionHints = new ActionHintPanel(this);
+    actionHints.setActions([
+      { key: '←/→', label: '选择语言 · Select language', primary: true },
+      { key: 'E', label: '确认 · Confirm' },
+    ]);
 
     this.refreshButtons();
     polishSceneTypography(this);
@@ -144,4 +145,3 @@ export class LanguageSelectScene extends Phaser.Scene {
     );
   }
 }
-

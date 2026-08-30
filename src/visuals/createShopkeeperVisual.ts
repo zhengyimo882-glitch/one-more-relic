@@ -6,7 +6,7 @@ export type ShopkeeperGesture = 'idle' | 'raise-hand' | 'wave' | 'nod';
 export const SHOPKEEPER_TEXTURE_KEY = 'generated-antique-shopkeeper';
 export const SHOPKEEPER_PORTRAIT_TEXTURE_KEY = 'art-v2-shopkeeper-portrait';
 const SHOPKEEPER_TEXTURE_PATH =
-  'assets/art-v2/characters/shopkeeper-v2-sheet.png';
+  'assets/art-v2/characters/shopkeeper-v3-sheet.png';
 const SHOPKEEPER_SHADOW_KEY = 'art-v2-character-ground-shadow';
 const SHOPKEEPER_SHADOW_PATH = 'assets/art-v2/effects/character-ground-shadow-v2.png';
 const SHOPKEEPER_PORTRAIT_TEXTURE_PATH = 'assets/art-v2/portraits/shopkeeper-v3-dialogue-portrait.png';
@@ -60,7 +60,7 @@ export function createShopkeeperVisual(
   const sprite = scene.add
     .sprite(0, 0, SHOPKEEPER_TEXTURE_KEY, 0)
     .setOrigin(0.5, ART_TOKENS.character.footAnchorY / SHOPKEEPER_FRAME_SIZE)
-    .setScale(0.88)
+    .setScale(1)
     .setTint(tintForScene('shop'));
   const container = scene.add.container(x, y, [shadow, sprite]);
   let gestureTimer: Phaser.Time.TimerEvent | undefined;
@@ -86,7 +86,8 @@ export function createShopkeeperVisual(
       gestureTimer = scene.time.delayedCall(760, playIdle);
     },
     setFacing(direction: -1 | 1): void {
-      container.setScale(direction, 1);
+      void direction;
+      container.setScale(1, 1);
     },
     reset(): void {
       gestureTimer?.remove(false);

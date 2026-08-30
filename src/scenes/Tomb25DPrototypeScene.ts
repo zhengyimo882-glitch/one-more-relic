@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { ActionHintPanel } from '../ui/ActionHintPanel';
 import { DEFAULT_PLAYER_APPEARANCE_ID } from '../data/playerAppearances';
 import {
   TOMB_25D_ASSET_LIST,
@@ -269,17 +270,11 @@ export class Tomb25DPrototypeScene extends Phaser.Scene {
       fontSize: '18px',
       color: '#e5d8b9',
     }).setScrollFactor(0).setDepth(10_001);
-    const instructions = this.add.text(
-      36,
-      61,
-      'W/A/S/D：沿等距轴移动\nW+A：视觉正上方　F3：碰撞脚印',
-      {
-        fontFamily: 'Arial, sans-serif',
-        fontSize: '14px',
-        lineSpacing: 7,
-        color: '#bfc9bd',
-      },
-    ).setScrollFactor(0).setDepth(10_001);
+    const actionHints = new ActionHintPanel(this, 10_001);
+    actionHints.setActions([
+      { key: 'WASD', label: '沿等距轴移动', primary: true },
+      { key: 'F3', label: '碰撞脚印' },
+    ]);
 
     this.collisionDebugLabel = this.add.text(36, 110, '', {
       fontFamily: 'monospace',
@@ -289,7 +284,6 @@ export class Tomb25DPrototypeScene extends Phaser.Scene {
 
     panel.setData('prototype-ui', true);
     title.setData('prototype-ui', true);
-    instructions.setData('prototype-ui', true);
   }
 
   private placeManifestImage(

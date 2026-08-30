@@ -42,6 +42,9 @@ import { InputActionManager } from '../input/InputActionManager';
 import { InteractionController } from '../systems/InteractionController';
 import { installSceneLoadingOverlay, markSceneInteractive } from '../systems/SceneTransitionController';
 import { InteractionDebugOverlay } from '../systems/InteractionDebugOverlay';
+import { ActionHintPanel } from '../ui/ActionHintPanel';
+import { localize } from '../i18n/gameLanguage';
+import { createSettingsButton } from '../ui/SettingsButton';
 
 const SERIF = VISUAL_THEME.fonts.serif;
 const SANS = VISUAL_THEME.fonts.sans;
@@ -93,6 +96,7 @@ export class ShopGrowthScene extends Phaser.Scene {
   private inputActions?: InputActionManager;
   private interactionController?: InteractionController<Station>;
   private interactionDebug?: InteractionDebugOverlay;
+  private actionHints?: ActionHintPanel;
 
   constructor() { super('ShopGrowthScene'); }
 
@@ -151,6 +155,8 @@ export class ShopGrowthScene extends Phaser.Scene {
     });
     this.createShopObjects();
     this.createHud();
+    this.actionHints = new ActionHintPanel(this, 95);
+    createSettingsButton(this, () => openPauseMenu(this));
     this.registerInput();
     this.restoreFromData();
     this.refreshState();
@@ -163,6 +169,7 @@ export class ShopGrowthScene extends Phaser.Scene {
   update(): void {
     if (!this.player || !this.inputActions) return;
     this.inputActions.setContext(this.focusMode ? `shop-focus:${this.focusMode}` : 'shop-growth-world');
+    this.updateActionHints();
     const escape = this.inputActions.consume('cancel');
     const confirm = this.inputActions.consume('confirm');
     const left = this.inputActions.consume('nav-left', { cooldownMs: 120 });
@@ -296,9 +303,29 @@ export class ShopGrowthScene extends Phaser.Scene {
     this.toastText = this.add.text(0, 0, '', { fontFamily: SERIF, fontSize: '16px', color: SHOP_UI.colors.text, align: 'center', wordWrap: { width: 600 } }).setOrigin(0.5);
     this.toast = this.add.container(640, 654, [createStyleBoardPanel(this, 660, 54, 'standard', 0.94), this.toastText])
       .setScrollFactor(0).setDepth(30).setVisible(false);
-    this.add.text(640, 700, 'WASD / 鼠标点击地面  移动', {
-      fontFamily: SANS, fontSize: '13px', color: SHOP_UI.colors.muted,
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(25);
+  }
+
+  private updateActionHints(): void {
+    if (!this.actionHints) return;
+    if (this.focusMode) {
+      const primary = this.focusMode === 'cleaning'
+        ? localize('Drag mouse to clean', '拖动鼠标清理')
+        : this.focusMode === 'inspection'
+          ? localize('Inspect relic', '观察器物')
+          : localize('Confirm selection', '确认选择');
+      this.actionHints.setActions([
+        { key: this.focusMode === 'cleaning' ? 'MOUSE' : 'E', label: primary, primary: true },
+        { key: 'A/D', label: localize('Select', '选择') },
+        { key: 'ESC', label: localize('Return to shop', '返回店内') },
+      ]);
+      return;
+    }
+    const station = this.nearby ? this.stations.get(this.nearby) : undefined;
+    this.actionHints.setActions([
+      ...(station ? [{ key: 'E', label: `${station.action} ${station.name}`, primary: true }] : []),
+      { key: 'WASD', label: localize('Move', '移动') },
+      { key: 'ESC', label: localize('Pause', '暂停') },
+    ]);
   }
 
   private registerInput(): void {
@@ -470,7 +497,6 @@ export class ShopGrowthScene extends Phaser.Scene {
   private addFocusHeader(layer: Phaser.GameObjects.Container, title: string, subtitle: string): void {
     layer.add(this.add.text(60, 46, title, { fontFamily: SERIF, fontSize: SHOP_UI.type.display, color: SHOP_UI.colors.text }));
     layer.add(this.add.text(61, 91, subtitle, { fontFamily: SANS, fontSize: SHOP_UI.type.body, color: SHOP_UI.colors.muted }));
-    layer.add(this.add.text(1220, 53, 'ESC  返回店内', { fontFamily: SANS, fontSize: SHOP_UI.type.caption, color: SHOP_UI.colors.muted }).setOrigin(1, 0));
     layer.add(this.add.rectangle(640, 124, 1160, 1, SHOP_UI.colors.gold, 0.35));
   }
 

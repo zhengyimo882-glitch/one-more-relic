@@ -56,6 +56,9 @@ import {
   setTypographyRole,
 } from '../ui/gameTypography';
 import { createArtPanel, preloadArtPanels } from '../ui/artPanel';
+import { ActionHintPanel, type ActionHint } from '../ui/ActionHintPanel';
+import { createSettingsButton } from '../ui/SettingsButton';
+import { localize } from '../i18n/gameLanguage';
 
 const SERIF_FONT = VISUAL_THEME.fonts.serif;
 const SANS_FONT = VISUAL_THEME.fonts.sans;
@@ -244,6 +247,7 @@ export class AntiqueShopScene extends Phaser.Scene {
   private worldPrompt?: Phaser.GameObjects.Container;
   private controlHint?: Phaser.GameObjects.Text;
   private escapeHint?: Phaser.GameObjects.Text;
+  private actionHints?: ActionHintPanel;
 
   private conversationPanel?: Phaser.GameObjects.Container;
   private conversationEnglishTitle?: Phaser.GameObjects.Text;
@@ -347,6 +351,7 @@ export class AntiqueShopScene extends Phaser.Scene {
     });
 
     this.createInterface();
+    createSettingsButton(this, () => openPauseMenu(this));
     polishSceneTypography(this);
     this.registerInput();
     this.showArrivalLocation();
@@ -364,6 +369,7 @@ export class AntiqueShopScene extends Phaser.Scene {
     }
 
     this.inputActions.setContext(`antique-shop:${this.phase}`);
+    this.updateActionHints();
     const interactionPressed = this.inputActions.consume('confirm');
     const enterPressed = false;
     const escapePressed = this.inputActions.consume('cancel');
@@ -427,6 +433,18 @@ export class AntiqueShopScene extends Phaser.Scene {
     }
   }
 
+  public isCurrentDialogueSkippable(): boolean {
+    return this.phase === 'conversation' && this.conversationIndex < this.conversationBeats.length;
+  }
+
+  public skipCurrentDialogue(): boolean {
+    if (!this.isCurrentDialogueSkippable()) return false;
+    this.conversationReveal?.complete();
+    this.conversationIndex = this.conversationBeats.length - 1;
+    this.showNextConversationBeat();
+    return true;
+  }
+
   private resetAntiqueShopState(): void {
     this.departureChoice = this.incomingDepartureChoice;
     this.appearanceId = this.incomingAppearanceId;
@@ -481,6 +499,8 @@ export class AntiqueShopScene extends Phaser.Scene {
     this.createLocationUI();
     this.createObjectiveUI();
     this.createControlHints();
+    this.actionHints = new ActionHintPanel(this, 90);
+    this.updateActionHints();
     this.createConversationPanel();
     this.createChoicePanel();
     this.createResultPanel();
@@ -538,24 +558,45 @@ export class AntiqueShopScene extends Phaser.Scene {
   }
 
   private createControlHints(): void {
-    this.controlHint = this.add
-      .text(640, 678, 'WASD / 鼠标点击地面  移动     E  交谈', {
-        fontFamily: SANS_FONT,
-        fontSize: '15px',
-        color: '#b0a187',
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(10);
-    this.escapeHint = this.add
-      .text(28, 678, 'ESC  Pause / 暂停', {
-        fontFamily: SANS_FONT,
-        fontSize: '14px',
-        color: '#969e92',
-      })
-      .setOrigin(0, 0.5)
-      .setScrollFactor(0)
-      .setDepth(10);
+    this.controlHint = undefined;
+    this.escapeHint = undefined;
+  }
+
+  private updateActionHints(): void {
+    if (!this.actionHints) return;
+    if (this.phase === 'arriving') {
+      this.actionHints.setActions([]);
+      return;
+    }
+    if (this.phase === 'conversation') {
+      this.actionHints.setActions([
+        { key: 'E', label: localize('Continue', '继续'), primary: true },
+        { key: 'ESC', label: localize('Pause', '暂停') },
+      ]);
+      return;
+    }
+    if (this.phase === 'response-choice' || this.phase === 'sale-choice') {
+      this.actionHints.setActions([
+        { key: 'A/D', label: localize('Select', '选择'), primary: true },
+        { key: 'E', label: localize('Confirm', '确认') },
+        { key: 'ESC', label: localize('Pause', '暂停') },
+      ]);
+      return;
+    }
+    if (this.phase === 'resolved') {
+      this.actionHints.setActions([
+        { key: 'E', label: localize('Return to menu', '返回主菜单'), primary: true },
+      ]);
+      return;
+    }
+    const actions: ActionHint[] = this.shopkeeperNearby
+      ? [{ key: 'E', label: localize('Talk to shopkeeper', '与老板交谈'), primary: true }]
+      : [];
+    actions.push(
+      { key: 'WASD', label: localize('Move', '移动') },
+      { key: 'ESC', label: localize('Pause', '暂停') },
+    );
+    this.actionHints.setActions(actions);
   }
 
   private createConversationPanel(): void {
@@ -609,6 +650,8 @@ export class AntiqueShopScene extends Phaser.Scene {
         color: '#ead9b9',
       })
       .setOrigin(0.5);
+    continueBacking.setVisible(false);
+    this.conversationContinueHint.setVisible(false);
     setTypographyRole(this.conversationContinueHint, 'hint-light');
     this.conversationReveal = new BilingualTextReveal(
       this,
@@ -728,6 +771,8 @@ export class AntiqueShopScene extends Phaser.Scene {
         color: '#ead9b9',
       })
       .setOrigin(0.5);
+    hintBacking.setVisible(false);
+    hint.setVisible(false);
     setTypographyRole(hint, 'hint-light');
     this.choicePanel = this.add
       .container(this.scale.width / 2, 590, [
@@ -905,7 +950,8 @@ export class AntiqueShopScene extends Phaser.Scene {
         fontSize: '15px',
         color: '#8f846e',
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setVisible(false);
     this.resultPanel = this.add
       .container(640, 360, [
         background,
