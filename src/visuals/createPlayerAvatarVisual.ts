@@ -42,6 +42,26 @@ const CARDINAL_ROW: Record<CardinalPose, number> = {
   up: 3,
 };
 
+type PoseMetrics = { scale: number; y: number };
+
+// Alpha-bound measurements of the authored sheets show that the standing
+// silhouettes are 93-98 px tall while the matching walk silhouettes are only
+// 72-82 px tall. Direction-specific scales keep the head line continuous and
+// the y offsets align the feet with each walk row's 109/110 px ground line.
+const IDLE_METRICS: Record<CardinalPose, PoseMetrics> = {
+  down: { scale: 0.872, y: 3.25 },
+  left: { scale: 0.831, y: 4.34 },
+  right: { scale: 0.836, y: 4.33 },
+  up: { scale: 0.83, y: 3.34 },
+};
+
+const CARRY_IDLE_METRICS: Record<CardinalPose, PoseMetrics> = {
+  down: { scale: 0.806, y: 3.39 },
+  left: { scale: 0.771, y: 4.46 },
+  right: { scale: 0.784, y: 4.43 },
+  up: { scale: 0.77, y: 3.46 },
+};
+
 // The source sheet contains four intact silhouettes. Diagonal movement uses the
 // nearest side-facing pose so that every frame remains anatomically coherent.
 const DIRECTION_POSE: Record<PlayerDirection, CardinalPose> = {
@@ -138,13 +158,25 @@ export function createPlayerAvatarVisual(
   let locomotion: PlayerLocomotion = 'forward';
   let actionActive = false;
 
+  const getPoseMetrics = (): PoseMetrics => {
+    if (moving) return { scale: 1, y: 0 };
+    const pose = DIRECTION_POSE[facing];
+    return carrying ? CARRY_IDLE_METRICS[pose] : IDLE_METRICS[pose];
+  };
+
+  const applyPoseMetrics = (): void => {
+    const metrics = getPoseMetrics();
+    sprite.setScale(metrics.scale).setY(metrics.y);
+  };
+
   const applyState = (): void => {
     if (moving) {
       sprite.play(animationKey(facing, carrying, locomotion), true);
-      return;
+    } else {
+      sprite.stop();
+      sprite.setTexture(PLAYER_TEXTURE_KEY, idleFrameFor(facing, carrying));
     }
-    sprite.stop();
-    sprite.setTexture(PLAYER_TEXTURE_KEY, idleFrameFor(facing, carrying));
+    applyPoseMetrics();
   };
 
   return {
@@ -172,9 +204,8 @@ export function createPlayerAvatarVisual(
         1.18,
         Phaser.Math.Clamp(speedRatio, 0, 1),
       );
-      sprite.y = 0;
       sprite.rotation = 0;
-      sprite.setScale(1);
+      applyPoseMetrics();
     },
     setCarrying(isCarrying: boolean): void {
       if (carrying === isCarrying) return;
@@ -184,18 +215,19 @@ export function createPlayerAvatarVisual(
     playAction(action: PlayerAction): void {
       actionActive = true;
       scene.tweens.killTweensOf(sprite);
+      const baseMetrics = getPoseMetrics();
       const duration = action === 'light-candle'
         ? 620
         : action === 'pickup'
           ? TOMB_FEEL.player.pickupFeedbackMs
           : TOMB_FEEL.player.placeFeedbackMs;
-      const targetY = action === 'light-candle' ? 5 : action === 'pickup' ? -3 : 2;
+      const actionOffsetY = action === 'light-candle' ? 5 : action === 'pickup' ? -3 : 2;
       scene.tweens.add({
         targets: sprite,
-        y: targetY,
+        y: baseMetrics.y + actionOffsetY,
         rotation: 0,
-        scaleX: 1,
-        scaleY: 1,
+        scaleX: baseMetrics.scale,
+        scaleY: baseMetrics.scale,
         alpha: 1,
         duration: duration / 2,
         yoyo: true,
@@ -203,7 +235,7 @@ export function createPlayerAvatarVisual(
         onUpdate: () => sprite.setY(Math.round(sprite.y)),
         onComplete: () => {
           actionActive = false;
-          sprite.setAlpha(1).setRotation(0).setScale(1).setY(0);
+          sprite.setAlpha(1).setRotation(0);
           applyState();
         },
       });
