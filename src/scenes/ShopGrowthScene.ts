@@ -103,6 +103,19 @@ export class ShopGrowthScene extends Phaser.Scene {
   init(data?: ShopGrowthData): void {
     this.incomingSettlement = data?.settlement;
     this.appearanceId = isPlayerAppearanceId(data?.appearanceId) ? data.appearanceId : DEFAULT_PLAYER_APPEARANCE_ID;
+    this.flowState = 'ShopFreeRoam';
+    this.returnState = 'ShopFreeRoam';
+    this.stations.clear();
+    this.nearby = undefined;
+    this.selectedLoot = undefined;
+    this.carriedLoot = undefined;
+    this.focusMode = undefined;
+    this.focusLayer = undefined;
+    this.growthRevealActive = false;
+    this.carryTransitionActive = false;
+    this.choiceIndex = 0;
+    this.evidenceFound.clear();
+    this.inputLockedUntil = 0;
   }
 
   preload(): void {
@@ -1006,5 +1019,11 @@ export class ShopGrowthScene extends Phaser.Scene {
     return index === 0 ? '普通流通铜钱' : '供桌仪式排列中的方位标记';
   }
 
-  private cleanup(): void { this.clearFocusOnly(); this.clickMove?.destroy(); this.clickMove = undefined; this.audio?.destroy(); this.atmosphere?.destroy(); this.player?.setMovementEnabled(false); }
+  private cleanup(): void {
+    this.clearFocusOnly();
+    this.clickMove?.destroy();
+    this.clickMove = undefined;
+    this.audio?.destroy();
+    this.atmosphere?.destroy();
+  }
 }

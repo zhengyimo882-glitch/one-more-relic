@@ -167,7 +167,21 @@ function applyTextLanguage(text: Phaser.GameObjects.Text): void {
     localized = selected ? (Array.isArray(raw) ? raw.join('\n') : raw) : '';
     if (selectedLanguage === 'zh-CN' && textIsChinese) copySharedLayout(text, partner);
   } else {
+    const source = Array.isArray(raw) ? raw.join('\n') : raw;
     localized = localizeRuntimeText(raw);
+    // A number of gameplay prompts are still authored in only one language.
+    // Keep that source text as a fallback instead of turning a usable prompt
+    // into an empty or control-token-only label when the other language is
+    // selected (for example, "1  软毛刷" becoming just "1").
+    const sourceIsChineseOnly = CJK_PATTERN.test(source) && !containsLanguageEnglish(source);
+    const sourceIsEnglishOnly = !CJK_PATTERN.test(source) && containsLanguageEnglish(source);
+    if (
+      !localized ||
+      (selectedLanguage === 'en' && sourceIsChineseOnly) ||
+      (selectedLanguage === 'zh-CN' && sourceIsEnglishOnly)
+    ) {
+      localized = source;
+    }
   }
 
   const languageHidden = localized.length === 0;
