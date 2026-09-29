@@ -226,20 +226,20 @@ export class ShopGrowthScene extends Phaser.Scene {
       this.add.image(-28, 1, SHOP_INTERIOR_TEXTURES.geomancersCompass).setDisplaySize(52, 52).setAngle(-12),
       this.add.image(30, 4, SHOP_INTERIOR_TEXTURES.brassTally).setDisplaySize(46, 46),
     ]).setDepth(4.15);
-    this.createStation('incoming', incoming.x, incoming.y, incoming.radius, '待处理器物', '拿起一件');
+    this.createStation('incoming', incoming.x, incoming.y, incoming.radius, localize("Incoming relics", '待处理器物'), localize("Pick up", '拿起一件'));
 
-    this.createStation('workbench', workbench.x, workbench.y, workbench.radius, '清理台', '放置器物');
+    this.createStation('workbench', workbench.x, workbench.y, workbench.radius, localize("Cleaning bench", '清理台'), localize("Place relic", '放置器物'));
 
-    this.createDestination('sell', sell.x, sell.y, '交货箱', 0x493225);
-    this.createDestination('collect', collect.x, collect.y, '展示柜', 0x4f3825);
-    this.createDestination('research', research.x, research.y, '研究盘', 0x3c3327);
-    this.createDestination('pledge', pledge.x, pledge.y, '抵押柜', 0x2f2924);
+    this.createDestination('sell', sell.x, sell.y, localize("Delivery box", '交货箱'), 0x493225);
+    this.createDestination('collect', collect.x, collect.y, localize("Display cabinet", '展示柜'), 0x4f3825);
+    this.createDestination('research', research.x, research.y, localize("Research tray", '研究盘'), 0x3c3327);
+    this.createDestination('pledge', pledge.x, pledge.y, localize("Pledge cabinet", '抵押柜'), 0x2f2924);
 
     this.atlasInk = this.add.graphics();
     this.atlasInk.lineStyle(2, 0x352617, 0.9).strokeRect(-34, -20, 68, 40).lineBetween(-10, -18, -10, 18).strokeCircle(19, 4, 6);
     this.atlasVisual = this.add.container(atlas.x, atlas.y - 44, [this.add.rectangle(0, 0, 100, 58, 0xc4b083).setStrokeStyle(1, 0x604631), this.atlasInk])
       .setDepth(4.18).setVisible(false);
-    this.createStation('atlas', atlas.x, atlas.y, atlas.radius, '《万字藏图》', '翻阅');
+    this.createStation('atlas', atlas.x, atlas.y, atlas.radius, localize("Myriad-Character Hidden Atlas", '《万字藏图》'), localize("Read", '翻阅'));
 
     this.growthCabinetGlow = this.add.graphics();
     this.growthCabinetGlow.fillStyle(0xd9ad63, 0.13).fillRoundedRect(-95, -55, 190, 110, 12);
@@ -261,7 +261,7 @@ export class ShopGrowthScene extends Phaser.Scene {
       .setDepth(4.12)
       .setVisible(false);
     this.growthCabinetGlow.setAlpha(0.18);
-    this.createStation('display', display.x, display.y, display.radius, '新展示柜', '揭开防尘布');
+    this.createStation('display', display.x, display.y, display.radius, localize("New cabinet", '新展示柜'), localize("Remove dust cover", '揭开防尘布'));
   }
 
   private createDestination(id: StationId, x: number, y: number, _name: string, _color: number): void {
@@ -303,7 +303,7 @@ export class ShopGrowthScene extends Phaser.Scene {
             this.handleStation(id);
             this.inputLockedUntil = this.time.now + 160;
           });
-          if (!moving) this.interactionController?.rejectAt(x, y - 58, '这边被挡住了，换个方向试试');
+          if (!moving) this.interactionController?.rejectAt(x, y - 58, localize("The path is blocked. Try another direction.", '这边被挡住了，换个方向试试'));
         }
       });
   }
@@ -459,7 +459,7 @@ export class ShopGrowthScene extends Phaser.Scene {
         onComplete: () => { this.carryTransitionActive = false; },
       });
     }
-    this.showToast(`已拿起${def.unidentifiedChineseName}。清理台的灯亮了。`);
+    this.showToast(localize(`Picked up ${localize(def.unidentifiedName, def.unidentifiedChineseName)}. The cleaning bench is now lit.`, `已拿起${localize(def.unidentifiedName, def.unidentifiedChineseName)}。清理台的灯亮了。`));
     this.refreshState();
   }
 
@@ -518,7 +518,7 @@ export class ShopGrowthScene extends Phaser.Scene {
     const def = SHOP_RELICS[this.selectedLoot.definitionId];
     const restoration = restorationDefinitionFor(this.selectedLoot);
     const layer = this.beginFocus('cleaning', 'Cleaning');
-    this.addFocusHeader(layer, `清理 · ${def.unidentifiedChineseName}`, '按住并拖动工具。看清需要的细节后，可以随时停止。');
+    this.addFocusHeader(layer, localize(`Clean · ${localize(def.unidentifiedName, def.unidentifiedChineseName)}`, `清理 · ${localize(def.unidentifiedName, def.unidentifiedChineseName)}`), localize("Hold and drag a tool. Stop whenever the details are clear enough.", '按住并拖动工具。看清需要的细节后，可以随时停止。'));
     const workbench = this.add.image(452, 382, RESTORATION_TEXTURES.workbench).setDisplaySize(820, 468);
     const status = this.add.text(60, 142, '', {
       fontFamily: SANS, fontSize: '15px', color: '#ead7b6', lineSpacing: 6,
@@ -529,9 +529,9 @@ export class ShopGrowthScene extends Phaser.Scene {
     layer.add([workbench, status, warning]);
 
     const updateStatus = (progress: number, damage: number, dirtType = 'loose-dust'): void => {
-      const dirtName = ({ 'loose-dust': '浮尘', 'hard-corrosion': '硬锈', 'surface-film': '污膜', mold: '霉斑' } as Record<string, string>)[dirtType];
-      status.setText(`显露 ${Math.round(progress)}%  ·  保存完整度 ${Math.round(Math.max(0, 100 - damage))}%\n当前触感：${dirtName}`);
-      if (progress > 82 && !warning.text) warning.setText('包浆已经很薄。继续清理不一定会得到更多依据。');
+      const dirtName = ({ 'loose-dust': localize("Loose dust", '浮尘'), 'hard-corrosion': localize("Hard corrosion", '硬锈'), 'surface-film': localize("Surface film", '污膜'), mold: localize("Mold", '霉斑') } as Record<string, string>)[dirtType];
+      status.setText(localize(`Revealed ${Math.round(progress)}%  ·  Preservation ${Math.round(Math.max(0, 100 - damage))}%\nSurface: ${dirtName}`, `显露 ${Math.round(progress)}%  ·  保存完整度 ${Math.round(Math.max(0, 100 - damage))}%\n当前触感：${dirtName}`));
+      if (progress > 82 && !warning.text) warning.setText(localize("The patina is thin. More cleaning may not reveal more evidence.", '包浆已经很薄。继续清理不一定会得到更多依据。'));
     };
     updateStatus(this.selectedLoot.cleaningProgress, this.selectedLoot.cleaningDamage);
     this.cleaningController = new RelicCleaningController(
@@ -561,7 +561,7 @@ export class ShopGrowthScene extends Phaser.Scene {
     };
     layer.add(toolButtons); layer.setData('toolButtons', toolButtons); layer.setData('toolIds', toolIds);
     selectTool('soft-brush');
-    const stop = this.createChoiceCard(790, 655, 230, 58, '停止清理，转入观察', 0, () => {
+    const stop = this.createChoiceCard(790, 655, 230, 58, localize("Stop and inspect", '停止清理，转入观察'), 0, () => {
       if (!this.selectedLoot) return;
       this.selectedLoot.cleaned = true;
       this.audio?.playSfx('choice-confirm');
@@ -577,9 +577,9 @@ export class ShopGrowthScene extends Phaser.Scene {
     const def = SHOP_RELICS[this.selectedLoot.definitionId];
     const restoration = restorationDefinitionFor(this.selectedLoot);
     const layer = this.beginFocus('inspection', 'Inspection');
-    this.addFocusHeader(layer, `观察 · ${def.unidentifiedChineseName}`, '拖动翻面 · 滚轮缩放 · 拖动工作灯改变侧光 · A / D 切换观察面');
+    this.addFocusHeader(layer, localize(`Inspect · ${localize(def.unidentifiedName, def.unidentifiedChineseName)}`, `观察 · ${localize(def.unidentifiedName, def.unidentifiedChineseName)}`), localize("Drag to rotate · Scroll to zoom · Drag lamp for side lighting · A / D to change face", '拖动翻面 · 滚轮缩放 · 拖动工作灯改变侧光 · A / D 切换观察面'));
     const workbench = this.add.image(455, 390, RESTORATION_TEXTURES.workbench).setDisplaySize(820, 470);
-    const hint = this.add.text(870, 140, '不要寻找标记。让角度、距离和侧光把细节显出来。', {
+    const hint = this.add.text(870, 140, localize("Use angle, distance and side lighting to reveal details.", '不要寻找标记。让角度、距离和侧光把细节显出来。'), {
       fontFamily: SERIF, fontSize: '15px', color: '#f0d7a8', wordWrap: { width: 340, useAdvancedWrap: true }, lineSpacing: 4,
     });
     const faceState = this.add.text(60, 145, '', { fontFamily: SANS, fontSize: '14px', color: '#ead7b6' });
@@ -587,7 +587,7 @@ export class ShopGrowthScene extends Phaser.Scene {
     this.evidenceFound = new Set(this.selectedLoot.evidenceIds);
 
     const notebook = this.add.image(1125, 380, RESTORATION_TEXTURES.notebookClosed).setDisplaySize(150, 178);
-    const notebookTitle = this.add.text(1015, 282, '观察记录', { fontFamily: SERIF, fontSize: '19px', color: '#2d1d14', stroke: '#dfc99f', strokeThickness: 2 }).setVisible(false);
+    const notebookTitle = this.add.text(1015, 282, localize("Observations", '观察记录'), { fontFamily: SERIF, fontSize: '19px', color: '#2d1d14', stroke: '#dfc99f', strokeThickness: 2 }).setVisible(false);
     const evidenceBody = this.add.text(930, 318, '', {
       fontFamily: SANS, fontSize: '14px', color: '#2d2018', stroke: '#dfc99f', strokeThickness: 2, wordWrap: { width: 270 }, lineSpacing: 6,
     }).setVisible(false);
@@ -605,10 +605,10 @@ export class ShopGrowthScene extends Phaser.Scene {
     const refreshEvidence = (): void => {
       const found = def.evidence.filter((e) => this.evidenceFound.has(e.id));
       if (found.length) openNotebook();
-      evidenceBody.setText(found.map((e, index) => `${index + 1}. ${e.chineseLabel}\n${e.chineseDetail}`).join('\n\n') || '尚无记录');
+      evidenceBody.setText(found.map((e, index) => `${index + 1}. ${localize(e.label, e.chineseLabel)}\n${localize(e.detail, e.chineseDetail)}`).join('\n\n') || localize("No observations yet", '尚无记录'));
       next.setVisible(found.length >= restoration.minimumEvidenceForAppraisal);
     };
-    const next = this.createChoiceCard(1040, 620, 270, 58, '根据现有证据鉴定', 0, () => this.openAppraisal()).setVisible(false);
+    const next = this.createChoiceCard(1040, 620, 270, 58, localize("Appraise with evidence", '根据现有证据鉴定'), 0, () => this.openAppraisal()).setVisible(false);
     layer.add(next); this.styleChoice(next, true);
     this.inspectionController = new RelicInspectionController(
       this, layer, restoration, this.selectedLoot, this.audio, 460, 395,
@@ -619,7 +619,7 @@ export class ShopGrowthScene extends Phaser.Scene {
           refreshEvidence();
         },
         onHint: (message) => hint.setText(message),
-        onFaceChanged: (face, zoom, lightAngle) => faceState.setText(`${face.label}  ·  放大 ${zoom.toFixed(1)}×  ·  侧光 ${Math.round(lightAngle)}°`),
+        onFaceChanged: (face, zoom, lightAngle) => faceState.setText(localize(`${face.label}  ·  Zoom ${zoom.toFixed(1)}×  ·  Light ${Math.round(lightAngle)}°`, `${face.label}  ·  放大 ${zoom.toFixed(1)}×  ·  侧光 ${Math.round(lightAngle)}°`)),
       },
     );
     refreshEvidence();
@@ -632,11 +632,11 @@ export class ShopGrowthScene extends Phaser.Scene {
     const def = SHOP_RELICS[this.selectedLoot.definitionId];
     const layer = this.beginFocus('appraisal', 'AppraisalDecision');
     const found = def.evidence.filter((e) => this.evidenceFound.has(e.id));
-    this.addFocusHeader(layer, '鉴定结论', `已记录 ${found.length}/${def.evidence.length} 条器物证据。证据不足时也可以判断，但风险会保留。`);
+    this.addFocusHeader(layer, localize("Appraisal", '鉴定结论'), localize(`Recorded ${found.length}/${def.evidence.length} clues. You can judge with incomplete evidence, at a risk.`, `已记录 ${found.length}/${def.evidence.length} 条器物证据。证据不足时也可以判断，但风险会保留。`));
     layer.add(this.add.image(355, 400, RESTORATION_TEXTURES.notebookOpen).setDisplaySize(540, 430));
-    layer.add(this.add.text(150, 210, '本次依据', { fontFamily: SERIF, fontSize: '23px', color: '#3a291c' }));
-    layer.add(this.add.text(145, 250, `${found.map((e) => `◆ ${e.chineseLabel}`).join('\n') || '◆ 尚未形成可靠器物证据'}\n◆ 墓中记录的方位与摆放关系\n\n保存完整度 ${this.selectedLoot.preservationScore ?? Math.max(0, 100 - this.selectedLoot.cleaningDamage)}%`, { fontFamily: SANS, fontSize: '16px', color: '#4b3928', lineSpacing: 13, wordWrap: { width: 420 } }));
-    const cards = def.conclusions.map((c, i) => this.createChoiceCard(870, 285 + i * 145, 470, 105, this.conclusionChinese(def.id, i), i, () => this.confirmAppraisal(i)));
+    layer.add(this.add.text(150, 210, localize("Evidence", '本次依据'), { fontFamily: SERIF, fontSize: '23px', color: '#3a291c' }));
+    layer.add(this.add.text(145, 250, localize(`${found.map((e) => `◆ ${localize(e.label, e.chineseLabel)}`).join('\n') || localize("◆ No reliable relic evidence yet", '◆ 尚未形成可靠器物证据')}\n◆ Positions and arrangements recorded in the tomb\n\nPreservation ${this.selectedLoot.preservationScore ?? Math.max(0, 100 - this.selectedLoot.cleaningDamage)}%`, `${found.map((e) => `◆ ${localize(e.label, e.chineseLabel)}`).join('\n') || localize("◆ No reliable relic evidence yet", '◆ 尚未形成可靠器物证据')}\n◆ 墓中记录的方位与摆放关系\n\n保存完整度 ${this.selectedLoot.preservationScore ?? Math.max(0, 100 - this.selectedLoot.cleaningDamage)}%`), { fontFamily: SANS, fontSize: '16px', color: '#4b3928', lineSpacing: 13, wordWrap: { width: 420 } }));
+    const cards = def.conclusions.map((c, i) => this.createChoiceCard(870, 285 + i * 145, 470, 105, localize(c, this.conclusionChinese(def.id, i)), i, () => this.confirmAppraisal(i)));
     layer.add(cards); this.choiceIndex = 0; cards.forEach((c, i) => this.styleChoice(c, i === 0));
     layer.setData('choiceCards', cards);
     polishSceneTypography(this);
@@ -651,7 +651,7 @@ export class ShopGrowthScene extends Phaser.Scene {
     const correct = index === def.correctConclusionIndex && evidenceComplete && criticalEvidenceIntact;
     ShopProgressSystem.recordConclusion(this.selectedLoot, index, correct);
     this.audio?.playSfx('choice-confirm');
-    this.showToast(correct ? '朱砂印落下：证据彼此吻合，器物价值上调。' : criticalEvidenceIntact ? '账本标作“存疑”：证据尚未闭合，估价下降。' : '新刮痕破坏了关键旧痕，结论无法坐实，估价下降。');
+    this.showToast(correct ? localize("The seal is set: the evidence agrees. The relic value has increased.", '朱砂印落下：证据彼此吻合，器物价值上调。') : criticalEvidenceIntact ? localize("Marked uncertain: the evidence is incomplete. The estimate has decreased.", '账本标作“存疑”：证据尚未闭合，估价下降。') : localize("New scratches destroyed key traces. The conclusion is unconfirmed and the estimate has decreased.", '新刮痕破坏了关键旧痕，结论无法坐实，估价下降。'));
     if (def.isCore) {
       this.selectedLoot.disposition = 'research';
       this.carriedLoot = this.selectedLoot;
@@ -668,15 +668,15 @@ export class ShopGrowthScene extends Phaser.Scene {
     this.clearFocusOnly();
     const def = SHOP_RELICS[this.selectedLoot.definitionId];
     const layer = this.beginFocus('disposition', 'DispositionDecision');
-    this.addFocusHeader(layer, `决定去向 · ${def.chineseName}`, '选好去向后，把器物送到店内对应位置。放下时完成结算。');
+    this.addFocusHeader(layer, localize(`Disposition · ${localize(def.name, def.chineseName)}`, `决定去向 · ${localize(def.name, def.chineseName)}`), localize("Choose a destination, then carry the relic there and place it to settle.", '选好去向后，把器物送到店内对应位置。放下时完成结算。'));
     const saleValue = calculateRelicValue(this.selectedLoot, def.saleValue);
     const pledgeValue = Math.max(0, Math.round(def.pledgeValue - this.selectedLoot.cleaningDamage * 1.5 + this.selectedLoot.evidenceIds.length * 8));
     const preservation = this.selectedLoot.preservationScore ?? Math.round(Math.max(0, 100 - this.selectedLoot.cleaningDamage));
     const choices: { d: RelicDisposition; title: string; body: string }[] = [
-      { d: 'sell', title: `出售  +¥${saleValue}`, body: `损伤、证据完整度与鉴定结果已经计入。保存完整度 ${preservation}%。` },
-      { d: 'collect', title: `收藏陈列  完整度 ${preservation}%`, body: '保留包浆会提高陈列价值；过度清理与新伤会永久留在器物上。' },
-      { d: 'research', title: `留作研究  证据 ${this.selectedLoot.evidenceIds.length}/${def.evidence.length}`, body: '暂时没有收入。器物会保留当前污层、损伤和未确认线索。' },
-      { d: 'pledge', title: `留作抵押  墓价¥${pledgeValue}`, body: '抵押估值同样受清理损伤和证据数量影响。' },
+      { d: 'sell', title: localize(`Sell  +¥${saleValue}`, `出售  +¥${saleValue}`), body: localize(`Damage, evidence and appraisal are included. Preservation ${preservation}%.`, `损伤、证据完整度与鉴定结果已经计入。保存完整度 ${preservation}%。`) },
+      { d: 'collect', title: localize(`Display  Preservation ${preservation}%`, `收藏陈列  完整度 ${preservation}%`), body: localize("Preserved patina improves display value. Overcleaning and new damage are permanent.", '保留包浆会提高陈列价值；过度清理与新伤会永久留在器物上。') },
+      { d: 'research', title: localize(`Research  Evidence ${this.selectedLoot.evidenceIds.length}/${def.evidence.length}`, `留作研究  证据 ${this.selectedLoot.evidenceIds.length}/${def.evidence.length}`), body: localize("No immediate income. Dirt, damage and unconfirmed clues are preserved.", '暂时没有收入。器物会保留当前污层、损伤和未确认线索。') },
+      { d: 'pledge', title: localize(`Pledge  Value ¥${pledgeValue}`, `留作抵押  墓价¥${pledgeValue}`), body: localize("Cleaning damage and evidence also affect the pledge value.", '抵押估值同样受清理损伤和证据数量影响。') },
     ];
     const cards = choices.map((c, i) => this.createChoiceCard(365 + (i % 2) * 550, 285 + Math.floor(i / 2) * 190, 490, 145, `${c.title}\n${c.body}`, i, () => this.selectDisposition(c.d)));
     layer.add(cards); this.choiceIndex = 0; cards.forEach((c, i) => this.styleChoice(c, i === 0)); layer.setData('choiceCards', cards); layer.setData('dispositions', choices.map((x) => x.d));
@@ -691,7 +691,7 @@ export class ShopGrowthScene extends Phaser.Scene {
     this.carriedVisual = this.createCarryRelic(this.selectedLoot);
     this.player?.setCarrying(true);
     this.player?.playCarryAction('pickup');
-    this.showToast(`账本已夹签：${this.destinationName(disposition)}。把器物送到对应位置，放下后完成结算。`);
+    this.showToast(localize(`Destination marked: ${this.destinationName(disposition)}. Carry the relic there and place it to settle.`, `账本已夹签：${this.destinationName(disposition)}。把器物送到对应位置，放下后完成结算。`));
     this.updateObjective();
   }
 
@@ -714,7 +714,7 @@ export class ShopGrowthScene extends Phaser.Scene {
       this.carriedVisual?.destroy(); this.carriedVisual = undefined;
       if (disposition !== 'sell') this.showPlacedRelic(loot, station.x, station.y - 32);
       this.audio?.playSfx('place-relic');
-      this.showToast(disposition === 'sell' ? `已完成交货，账本记入 ¥${value}。` : `${def.chineseName}已放入${this.destinationName(disposition)}。店内陈列发生了永久变化。`);
+      this.showToast(disposition === 'sell' ? localize(`Delivered. Credited ¥${value}.`, `已完成交货，账本记入 ¥${value}。`) : localize(`${localize(def.name, def.chineseName)} placed in ${this.destinationName(disposition)}. The shop display has changed permanently.`, `${localize(def.name, def.chineseName)}已放入${this.destinationName(disposition)}。店内陈列发生了永久变化。`));
       this.carriedLoot = undefined; this.selectedLoot = undefined;
       this.carryTransitionActive = false;
       this.player?.setMovementEnabled(true);
@@ -743,7 +743,7 @@ export class ShopGrowthScene extends Phaser.Scene {
   private openAtlas(): void {
     const p = ShopProgressSystem.getProgress();
     const layer = this.beginFocus('atlas', 'AtlasEvent');
-    this.addFocusHeader(layer, '《万字藏图》', '这些墨迹指向的不是下一座墓，而是店里的某个位置。');
+    this.addFocusHeader(layer, localize("Myriad-Character Hidden Atlas", '《万字藏图》'), localize("The ink points to a place inside this shop.", '这些墨迹指向的不是下一座墓，而是店里的某个位置。'));
     const frame = createStyleBoardPanel(this, 950, 514, 'carved', 0.98).setPosition(640, 394);
     const page = this.add.image(640, 394, NARRATIVE_ART_TEXTURES.myriadAtlasReveal).setDisplaySize(930, 494);
     const developingPage = this.add
@@ -753,8 +753,8 @@ export class ShopGrowthScene extends Phaser.Scene {
       .setAlpha(p.atlasPage === 0 ? 0.92 : 0);
     const captionBg = createStyleBoardPanel(this, 860, 62, 'thin', 0.94).setPosition(640, 645);
     const caption = this.add.text(640, 645, p.atlasPage === 0
-      ? '墨线从纸纤维里缓慢渗出：店里的展示柜，正压在墓室前室壁龛的位置上。'
-      : '残页上的店铺与墓室彼此叠映，朱砂印仍压在那座展示柜上。', {
+      ? localize("Ink slowly emerges: the shop cabinet aligns with the niche in the tomb antechamber.", '墨线从纸纤维里缓慢渗出：店里的展示柜，正压在墓室前室壁龛的位置上。')
+      : localize("The shop and tomb overlap on the page. The red seal still marks the cabinet.", '残页上的店铺与墓室彼此叠映，朱砂印仍压在那座展示柜上。'), {
       fontFamily: SERIF, fontSize: '17px', color: SHOP_UI.colors.text, align: 'center', wordWrap: { width: 800 },
     }).setOrigin(0.5);
     layer.add([frame, page, developingPage, captionBg, caption]);
@@ -818,7 +818,7 @@ export class ShopGrowthScene extends Phaser.Scene {
             this.growthRevealActive = false;
             this.player?.setMovementEnabled(true);
             this.cameras.main.pan(640, 360, 450, Phaser.Math.Easing.Sine.InOut);
-            this.showToast('防尘布滑落，铜角和玻璃一一露了出来。柜格的比例，和墓室壁龛几乎一样。');
+            this.showToast(localize("The cover slips away, revealing brass corners and glass. The cabinet proportions match the tomb niche.", '防尘布滑落，铜角和玻璃一一露了出来。柜格的比例，和墓室壁龛几乎一样。'));
             this.refreshState();
           },
         });
@@ -996,12 +996,12 @@ export class ShopGrowthScene extends Phaser.Scene {
 
   private updateObjective(): void {
     const p = ShopProgressSystem.getProgress();
-    let text = '在店里转一圈，看看陈列有什么变化。';
-    if (this.carriedLoot?.disposition) text = `把器物放到${this.destinationName(this.carriedLoot.disposition)}。`;
-    else if (this.carriedLoot) text = '把手里的器物送到清理台。';
-    else if (p.activeLoot.some((x) => !x.placed)) text = '去待处理桌拿一件器物。';
-    else if (p.atlasPage === 0) text = '去看看工作台上正在自行显字的《万字藏图》。';
-    else if (this.growthCurtain?.visible) text = '去揭开新展示柜上的防尘布。';
+    let text = localize("Explore the shop and its changed displays.", '在店里转一圈，看看陈列有什么变化。');
+    if (this.carriedLoot?.disposition) text = localize(`Place the relic in the ${this.destinationName(this.carriedLoot.disposition)}.`, `把器物放到${this.destinationName(this.carriedLoot.disposition)}。`);
+    else if (this.carriedLoot) text = localize("Carry the relic to the cleaning bench.", '把手里的器物送到清理台。');
+    else if (p.activeLoot.some((x) => !x.placed)) text = localize("Pick up a relic from the incoming table.", '去待处理桌拿一件器物。');
+    else if (p.atlasPage === 0) text = localize("Read the atlas developing on the workbench.", '去看看工作台上正在自行显字的《万字藏图》。');
+    else if (this.growthCurtain?.visible) text = localize("Remove the dust cover from the new cabinet.", '去揭开新展示柜上的防尘布。');
     this.objectiveText?.setText(text);
   }
 
@@ -1011,9 +1011,9 @@ export class ShopGrowthScene extends Phaser.Scene {
   }
 
   private destinationName(id: StationId | RelicDisposition): string {
-    return ({ sell: '交货箱', collect: '展示柜', research: '研究盘', pledge: '抵押柜', incoming: '待处理器物', workbench: '清理台', atlas: '《万字藏图》', display: '新展示柜' } as Record<string, string>)[id] ?? '';
+    return ({ sell: localize("Delivery box", '交货箱'), collect: localize("Display cabinet", '展示柜'), research: localize("Research tray", '研究盘'), pledge: localize("Pledge cabinet", '抵押柜'), incoming: localize("Incoming relics", '待处理器物'), workbench: localize("Cleaning bench", '清理台'), atlas: localize("Myriad-Character Hidden Atlas", '《万字藏图》'), display: localize("New cabinet", '新展示柜') } as Record<string, string>)[id] ?? '';
   }
-  private destinationAction(id: StationId): string { return ({ sell: '放入并结算', collect: '放入陈列', research: '放入研究盘', pledge: '锁入抵押柜' } as Record<string, string>)[id] ?? '交互'; }
+  private destinationAction(id: StationId): string { return ({ sell: localize("Place and settle", '放入并结算'), collect: localize("Place on display", '放入陈列'), research: localize("Place for research", '放入研究盘'), pledge: localize("Place as pledge", '锁入抵押柜') } as Record<string, string>)[id] ?? localize("Interact", '交互'); }
   private conclusionChinese(id: string, index: number): string {
     if (id === 'myriad-character-atlas') return index === 0 ? '未使用的旧账本' : '等待特定方位触发的仪式地图';
     return index === 0 ? '普通流通铜钱' : '供桌仪式排列中的方位标记';

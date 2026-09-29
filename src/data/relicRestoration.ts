@@ -1,3 +1,4 @@
+import { localize } from '../i18n/gameLanguage';
 import type { TombLootRecord } from '../systems/ShopProgressSystem';
 
 export type RestorationToolId = 'soft-brush' | 'bamboo-pick' | 'dry-cloth';
@@ -31,21 +32,22 @@ export type ToolDefinition = {
   feedbackColor: number;
 };
 
+// Read localized labels lazily: these definitions load before language selection.
 export const RESTORATION_TOOLS: Record<RestorationToolId, ToolDefinition> = {
   'soft-brush': {
-    id: 'soft-brush', name: '软毛刷', shortHint: '中等范围，浮尘最安全',
+    id: 'soft-brush', get name() { return localize('Soft brush', '软毛刷'); }, get shortHint() { return localize('Safe on dust', '中等范围，浮尘最安全'); },
     texture: RESTORATION_TEXTURES.tools['soft-brush'], radius: 34, safeSpeed: 980, dwellRiskMs: 1800,
     rates: { 'loose-dust': 1, 'hard-corrosion': 0.22, 'surface-film': 0.42, mold: 0.46 },
     damagePerSecond: 0.2, feedbackColor: 0xb99a70,
   },
   'bamboo-pick': {
-    id: 'bamboo-pick', name: '竹签', shortHint: '硬锈快；久停会刮伤',
+    id: 'bamboo-pick', get name() { return localize('Bamboo pick', '竹签'); }, get shortHint() { return localize('Rust: keep moving', '硬锈快；久停会刮伤'); },
     texture: RESTORATION_TEXTURES.tools['bamboo-pick'], radius: 15, safeSpeed: 520, dwellRiskMs: 520,
     rates: { 'loose-dust': 0.28, 'hard-corrosion': 1.45, 'surface-film': 0.16, mold: 0.12 },
     damagePerSecond: 8.4, feedbackColor: 0x8a6c4b,
   },
   'dry-cloth': {
-    id: 'dry-cloth', name: '干棉布', shortHint: '浮灰快；急擦会磨损',
+    id: 'dry-cloth', get name() { return localize('Dry cloth', '干棉布'); }, get shortHint() { return localize('Dust: rub gently', '浮灰快；急擦会磨损'); },
     texture: RESTORATION_TEXTURES.tools['dry-cloth'], radius: 52, safeSpeed: 430, dwellRiskMs: 1100,
     rates: { 'loose-dust': 1.3, 'hard-corrosion': 0.08, 'surface-film': 0.82, mold: 0.25 },
     damagePerSecond: 3.2, feedbackColor: 0xd5c39b,
@@ -103,15 +105,15 @@ export type RestorationDefinition = {
   minimumEvidenceForAppraisal: number;
 };
 
-const coinFace = (id: RelicFaceId, label: string, width = 430, height = 430): RelicFaceDefinition => ({
-  id, label,
+const coinFace = (id: RelicFaceId, label: () => string, width = 430, height = 430): RelicFaceDefinition => ({
+  id, get label() { return label(); },
   cleanTexture: `restoration-coin-${id}-clean`, dirtyTexture: `restoration-coin-${id}-dirty`,
   damagedTexture: `restoration-coin-${id}-damaged`, shadowTexture: `restoration-coin-${id}-shadow`,
   displayWidth: width, displayHeight: height,
 });
 
-const bookFace = (id: RelicFaceId, label: string, width: number, height: number): RelicFaceDefinition => ({
-  id, label,
+const bookFace = (id: RelicFaceId, label: () => string, width: number, height: number): RelicFaceDefinition => ({
+  id, get label() { return label(); },
   cleanTexture: `restoration-book-${id}-clean`, dirtyTexture: `restoration-book-${id}-dirty`,
   damagedTexture: `restoration-book-${id}-damaged`, shadowTexture: `restoration-book-${id}-shadow`,
   displayWidth: width, displayHeight: height,
@@ -126,21 +128,21 @@ export const RELIC_RESTORATION: Record<string, RestorationDefinition> = {
       { id: 'lower-crust', dirtType: 'hard-corrosion', x: 0.08, y: 0.48, width: 0.52, height: 0.42 },
       { id: 'inscription-film', dirtType: 'surface-film', x: 0.35, y: 0.18, width: 0.55, height: 0.54 },
     ],
-    inspectionFaces: [coinFace('front', '正面'), coinFace('edge', '侧缘', 150, 430), coinFace('back', '背面')],
+    inspectionFaces: [coinFace('front', () => localize("Front", '正面')), coinFace('edge', () => localize("Edge", '侧缘'), 150, 430), coinFace('back', () => localize("Back", '背面'))],
     evidenceRegions: [
       {
         id: 'offering-dust', face: 'front', x: 0.51, y: 0.49, radius: 0.19,
         minimumCleaning: 38, maximumDamage: 100, zoom: [0.88, 1.5], lightAngle: -28, lightTolerance: 62, holdMs: 460,
-        searchHint: '方孔内缘的积灰层次',
-        observation: '方孔内的积灰留下清楚层差，与供桌净圈吻合。',
-        destroyedObservation: '方孔仍可辨认，但泥层已被抹乱。',
+        get searchHint() { return localize("dust layers inside the square hole", '方孔内缘的积灰层次'); },
+        get observation() { return localize("Dust layers inside the square hole match the clean ring on the offering table.", '方孔内的积灰留下清楚层差，与供桌净圈吻合。'); },
+        get destroyedObservation() { return localize("The square hole is visible, but the dirt layers have been disturbed.", '方孔仍可辨认，但泥层已被抹乱。'); },
       },
       {
         id: 'ritual-facing', face: 'back', x: 0.31, y: 0.61, radius: 0.2,
         minimumCleaning: 58, maximumDamage: 19, zoom: [1.08, 1.78], lightAngle: 126, lightTolerance: 55, holdMs: 580,
-        searchHint: '背面左下的单向旧磨损',
-        observation: '侧光掠过背面，单向磨损与长期朝向显了出来。',
-        destroyedObservation: '新刮痕盖住了旧磨损方向，这条依据无法确认。',
+        get searchHint() { return localize("directional wear on the lower left of the back", '背面左下的单向旧磨损'); },
+        get observation() { return localize("Side lighting reveals directional wear from prolonged positioning.", '侧光掠过背面，单向磨损与长期朝向显了出来。'); },
+        get destroyedObservation() { return localize("New scratches obscure the old wear. This clue cannot be confirmed.", '新刮痕盖住了旧磨损方向，这条依据无法确认。'); },
       },
     ],
     toolModifiers: { 'soft-brush': 1, 'bamboo-pick': 1.08, 'dry-cloth': 0.82 },
@@ -157,23 +159,23 @@ export const RELIC_RESTORATION: Record<string, RestorationDefinition> = {
       { id: 'edge-mold', dirtType: 'mold', x: 0.52, y: 0.1, width: 0.42, height: 0.34 },
     ],
     inspectionFaces: [
-      bookFace('front', '封面', 360, 430), bookFace('spine', '书脊', 490, 190),
-      bookFace('open', '内页', 560, 405), bookFace('back', '封底', 360, 430),
+      bookFace('front', () => localize("Cover", '封面'), 360, 430), bookFace('spine', () => localize("Spine", '书脊'), 490, 190),
+      bookFace('open', () => localize("Pages", '内页'), 560, 405), bookFace('back', () => localize("Back cover", '封底'), 360, 430),
     ],
     evidenceRegions: [
       {
         id: 'blank-fibres', face: 'open', x: 0.70, y: 0.42, radius: 0.21,
         minimumCleaning: 34, maximumDamage: 24, zoom: [1.12, 1.8], lightAngle: -52, lightTolerance: 62, holdMs: 480,
-        searchHint: '右页中段的纸纤维',
-        observation: '斜光穿过纸纤维：纸很旧，却没有墨迹渗入。',
-        destroyedObservation: '纸面被擦毛，纤维方向已经混在新伤里。',
+        get searchHint() { return localize("paper fibres in the middle of the right page", '右页中段的纸纤维'); },
+        get observation() { return localize("Oblique light reveals old paper fibres with no ink soaked into them.", '斜光穿过纸纤维：纸很旧，却没有墨迹渗入。'); },
+        get destroyedObservation() { return localize("Abrasion has frayed the paper and obscured the original fibres.", '纸面被擦毛，纤维方向已经混在新伤里。'); },
       },
       {
         id: 'folded-map-seam', face: 'spine', x: 0.56, y: 0.48, radius: 0.23,
         minimumCleaning: 44, maximumDamage: 34, zoom: [0.96, 1.65], lightAngle: 138, lightTolerance: 62, holdMs: 560,
-        searchHint: '书脊中央连续的旧折线',
-        observation: '书脊折痕在侧光下连成路线，与墓中包布的折线重合。',
-        destroyedObservation: '折痕还在，但擦痕切断了连续走向。',
+        get searchHint() { return localize("the continuous old fold along the spine", '书脊中央连续的旧折线'); },
+        get observation() { return localize("Side lighting connects the spine folds into a route matching the tomb wrapping.", '书脊折痕在侧光下连成路线，与墓中包布的折线重合。'); },
+        get destroyedObservation() { return localize("The fold remains, but scratches interrupt its continuity.", '折痕还在，但擦痕切断了连续走向。'); },
       },
     ],
     toolModifiers: { 'soft-brush': 1.05, 'bamboo-pick': 0.42, 'dry-cloth': 1 },

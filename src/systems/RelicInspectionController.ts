@@ -1,3 +1,4 @@
+import { localize } from '../i18n/gameLanguage';
 import Phaser from 'phaser';
 import {
   RESTORATION_TEXTURES,
@@ -116,16 +117,16 @@ export class RelicInspectionController {
     if (!cleaningOk || !zoomOk || !lightOk || destroyed) {
       this.stableEvidence = undefined;
       if (destroyed) this.emitHint(`${evidence.id}-destroyed`, evidence.destroyedObservation);
-      else if (!cleaningOk) this.emitHint(`${evidence.id}-clean`, `已找到${evidence.searchHint}，但污层仍太厚。\n需要显露 ${evidence.minimumCleaning}% 以上。`);
+      else if (!cleaningOk) this.emitHint(`${evidence.id}-clean`, localize(`Found ${evidence.searchHint}, but the dirt is still too thick.\nReveal at least ${evidence.minimumCleaning}%.`, `已找到${evidence.searchHint}，但污层仍太厚。\n需要显露 ${evidence.minimumCleaning}% 以上。`));
       else if (!zoomOk) this.emitHint(`${evidence.id}-zoom-${this.zoom < evidence.zoom[0]}`, this.zoom < evidence.zoom[0]
-        ? `位置正确。\n向上滚轮放大到约 ${evidence.zoom[0].toFixed(1)}×。`
-        : `位置正确。\n略微缩小到 ${evidence.zoom[1].toFixed(1)}× 以下。`);
-      else if (!lightOk) this.emitHint(`${evidence.id}-light`, `距离合适。\n把工作灯拖向画面${this.directionName(evidence.lightAngle)}，直到细节出现反光。`);
+        ? localize(`Correct position.\nScroll up to zoom to about ${evidence.zoom[0].toFixed(1)}×.`, `位置正确。\n向上滚轮放大到约 ${evidence.zoom[0].toFixed(1)}×。`)
+        : localize(`Correct position.\nZoom out below ${evidence.zoom[1].toFixed(1)}×.`, `位置正确。\n略微缩小到 ${evidence.zoom[1].toFixed(1)}× 以下。`));
+      else if (!lightOk) this.emitHint(`${evidence.id}-light`, localize(`Distance is right.\nDrag the lamp toward the ${this.directionName(evidence.lightAngle)} until the detail catches the light.`, `距离合适。\n把工作灯拖向画面${this.directionName(evidence.lightAngle)}，直到细节出现反光。`));
       return;
     }
     if (this.stableEvidence !== evidence.id) {
       this.stableEvidence = evidence.id; this.stableSince = time;
-      this.emitHint(`${evidence.id}-ready`, `条件已对上。\n在${evidence.searchHint}保持不动片刻。`);
+      this.emitHint(`${evidence.id}-ready`, localize(`Conditions match.\nHold still over ${evidence.searchHint} for a moment.`, `条件已对上。\n在${evidence.searchHint}保持不动片刻。`));
       return;
     }
     if (time - this.stableSince >= evidence.holdMs) this.discoverEvidence(evidence);
@@ -229,13 +230,13 @@ export class RelicInspectionController {
     if (gameObject !== this.lamp) return;
     const evidence = this.pendingEvidenceForCurrentFace();
     if (!evidence) {
-      this.emitHint(`face-${this.currentFace().id}-empty`, '这一面没有新的可确认线索。拖动器物或按 A / D 继续翻面。');
+      this.emitHint(`face-${this.currentFace().id}-empty`, localize("No new clues on this face. Drag the relic or press A / D to turn it.", '这一面没有新的可确认线索。拖动器物或按 A / D 继续翻面。'));
       return;
     }
     const lightOk = Math.abs(Phaser.Math.Angle.WrapDegrees(this.lightAngle - evidence.lightAngle)) <= evidence.lightTolerance;
     this.emitHint(`${evidence.id}-lamp-${lightOk}`, lightOk
-      ? `侧光方向合适。\n把光标移到${evidence.searchHint}，出现放大光标后保持不动。`
-      : `灯位已固定，但反光方向还不对。\n目标在画面${this.directionName(evidence.lightAngle)}。`);
+      ? localize(`The light angle is right.\nMove the cursor over ${evidence.searchHint} and hold still when the magnifying cursor appears.`, `侧光方向合适。\n把光标移到${evidence.searchHint}，出现放大光标后保持不动。`)
+      : localize(`The lamp is fixed, but the angle is wrong.\nAim toward the ${this.directionName(evidence.lightAngle)}.`, `灯位已固定，但反光方向还不对。\n目标在画面${this.directionName(evidence.lightAngle)}。`));
   };
 
   private currentFace(): RelicFaceDefinition { return this.definition.inspectionFaces[this.faceIndex]; }
@@ -252,8 +253,8 @@ export class RelicInspectionController {
     this.callbacks.onFaceChanged(face, this.zoom, this.lightAngle);
     const pending = this.pendingEvidenceForCurrentFace();
     this.emitHint(pending ? `face-${face.id}-${pending.id}` : `face-${face.id}-empty`, pending
-      ? `本面观察目标：${pending.searchHint}。\n滚轮调整距离，再拖灯寻找侧光反光。`
-      : '这一面没有新的可确认线索。拖动器物或按 A / D 继续翻面。');
+      ? localize(`Look for: ${pending.searchHint}.\nScroll to adjust distance, then drag the lamp to reveal reflections.`, `本面观察目标：${pending.searchHint}。\n滚轮调整距离，再拖灯寻找侧光反光。`)
+      : localize("No new clues on this face. Drag the relic or press A / D to turn it.", '这一面没有新的可确认线索。拖动器物或按 A / D 继续翻面。'));
   }
 
   private drawLight(): void {
@@ -286,13 +287,13 @@ export class RelicInspectionController {
 
   private directionName(angle: number): string {
     const normalized = Phaser.Math.Angle.WrapDegrees(angle);
-    if (normalized >= -67.5 && normalized < -22.5) return '右上方';
-    if (normalized >= -22.5 && normalized < 22.5) return '右侧';
-    if (normalized >= 22.5 && normalized < 67.5) return '右下方';
-    if (normalized >= 67.5 && normalized < 112.5) return '下方';
-    if (normalized >= 112.5 && normalized < 157.5) return '左下方';
-    if (normalized >= 157.5 || normalized < -157.5) return '左侧';
-    if (normalized >= -157.5 && normalized < -112.5) return '左上方';
-    return '上方';
+    if (normalized >= -67.5 && normalized < -22.5) return localize("upper right", '右上方');
+    if (normalized >= -22.5 && normalized < 22.5) return localize("right", '右侧');
+    if (normalized >= 22.5 && normalized < 67.5) return localize("lower right", '右下方');
+    if (normalized >= 67.5 && normalized < 112.5) return localize("bottom", '下方');
+    if (normalized >= 112.5 && normalized < 157.5) return localize("lower left", '左下方');
+    if (normalized >= 157.5 || normalized < -157.5) return localize("left", '左侧');
+    if (normalized >= -157.5 && normalized < -112.5) return localize("upper left", '左上方');
+    return localize("top", '上方');
   }
 }

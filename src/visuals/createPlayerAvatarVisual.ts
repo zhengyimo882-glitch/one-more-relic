@@ -18,6 +18,12 @@ const PLAYER_SHADOW_PATH = 'assets/art-v2/effects/character-ground-shadow-v2.png
 const PLAYER_FRAME_SIZE = 128;
 const SHEET_COLUMNS = 4;
 
+// In the v6 carry sheet, right-facing frames have soles at y=84 instead
+// of y=110, plus stray pixels from the next pose at y=106..110.
+// Crop only that row and restore its ground line without moving the shadow.
+const CARRY_RIGHT_WALK_Y = 26;
+const CARRY_RIGHT_WALK_CROP_HEIGHT = 100;
+
 type PlayerAction = 'pickup' | 'place' | 'light-candle';
 type PlayerVisualState =
   | 'idle'
@@ -158,8 +164,11 @@ export function createPlayerAvatarVisual(
   let locomotion: PlayerLocomotion = 'forward';
   let actionActive = false;
 
+  const needsCarryRightAlignment = (): boolean =>
+    moving && carrying && DIRECTION_POSE[facing] === 'right';
+
   const getPoseMetrics = (): PoseMetrics => {
-    if (moving) return { scale: 1, y: 0 };
+    if (moving) return { scale: 1, y: needsCarryRightAlignment() ? CARRY_RIGHT_WALK_Y : 0 };
     const pose = DIRECTION_POSE[facing];
     return carrying ? CARRY_IDLE_METRICS[pose] : IDLE_METRICS[pose];
   };
@@ -167,6 +176,11 @@ export function createPlayerAvatarVisual(
   const applyPoseMetrics = (): void => {
     const metrics = getPoseMetrics();
     sprite.setScale(metrics.scale).setY(metrics.y);
+    if (needsCarryRightAlignment()) {
+      sprite.setCrop(0, 0, PLAYER_FRAME_SIZE, CARRY_RIGHT_WALK_CROP_HEIGHT);
+    } else {
+      sprite.setCrop();
+    }
   };
 
   const applyState = (): void => {

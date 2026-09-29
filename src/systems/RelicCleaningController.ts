@@ -1,3 +1,4 @@
+import { localize } from '../i18n/gameLanguage';
 import Phaser from 'phaser';
 import {
   RESTORATION_TOOLS,
@@ -197,7 +198,7 @@ export class RelicCleaningController {
       this.markDestroyedEvidence();
       if (time - this.lastWarningAt > 820) {
         this.lastWarningAt = time;
-        this.callbacks.onWarning(this.toolId === 'dry-cloth' ? '布面发涩了——放慢一些。' : '传来一声细刮响，表面正在受伤。');
+        this.callbacks.onWarning(this.toolId === 'dry-cloth' ? localize("The cloth is dragging. Slow down.", '布面发涩了——放慢一些。') : localize("A faint scrape: the surface is taking damage.", '传来一声细刮响，表面正在受伤。'));
         this.audio?.playRestorationFriction(this.toolId, dirtType, true);
       }
     } else if (time - this.lastParticleAt > 140) {
